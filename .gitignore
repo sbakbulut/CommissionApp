@@ -1,0 +1,9 @@
+# Yerel / gecici dosyalar
+*.tmp
+*.bak
+*~
+.DS_Store
+Thumbs.db
+
+# Uretilen raporlar
+commission-report-*.xlsx

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Commission Calculator v13.4</title>
+<title>Commission Calculator v13.6</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -161,6 +161,17 @@
   .rates-table td.cat-name { font-size: 0.82rem; color: var(--tiffany-black); white-space: nowrap; }
   .rates-table td.rate-readonly { text-align: center; font-family: "Didot", "Playfair Display", Georgia, serif; font-size: 0.95rem; color: var(--tiffany-black); }
   .hv-note { border: 1px solid var(--tiffany-gray-light); padding: 14px 16px; font-size: 0.78rem; color: var(--tiffany-gray); line-height: 1.5; }
+  .fx-note {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    border: 1px solid var(--tiffany-blue-light);
+    background: var(--tiffany-blue-bg);
+    color: var(--tiffany-gray);
+    font-size: 0.76rem;
+    line-height: 1.6;
+    border-radius: 6px;
+  }
+  .fx-note strong { color: var(--tiffany-blue-dark); font-weight: 600; }
   .hv-settings { border: 1px solid var(--tiffany-gray-light); padding: 16px; }
   .hv-settings .field-label { margin-top: 12px; }
   .hv-settings .field-label:first-child { margin-top: 0; }
@@ -759,11 +770,12 @@
         <button class="export-btn ocr" id="teamBtn">👥 Team Report</button>
         <select class="settings-input" id="myCurrency" style="max-width: 170px; padding: 8px 10px;" title="Export currency">
           <option value="EUR">€ EUR (original)</option>
-          <option value="TRY">₺ TRY (daily rate)</option>
+          <option value="TRY">₺ TRY (ayın son kuru)</option>
         </select>
         <button class="export-btn" id="exportExcelBtn">📊 Excel (My Sales)</button>
         <button class="export-btn ghost" id="resetBtn">🗑️ Reset</button>
       </div>
+      <div class="fx-note" id="fxNote" style="display: none;"></div>
       <div id="catContainer"></div>
     </div>
   </div>
@@ -836,7 +848,7 @@
         <label for="teamCurrency" style="font-size: 0.78rem; color: var(--tiffany-gray);">Currency</label>
         <select class="settings-input" id="teamCurrency" style="max-width: 210px;">
           <option value="EUR">€ EUR (original)</option>
-          <option value="TRY">₺ TRY (daily rate)</option>
+          <option value="TRY">₺ TRY (ayın son kuru)</option>
         </select>
       </div>
       <button class="export-btn ghost" id="teamCancelBtn">Cancel</button>
@@ -847,6 +859,17 @@
 </div>
 
 <script>
+// ════════════════════════════════════════════════════════════════
+// v13.6 — TRY / KUR DÜZELTMELERİ
+//  • TRY çevirimi artık AY BAZINDA: her satır kendi ayının son iş günü kuruyla
+//    çevrilir (Ağustos satışı Ağustos kuru, Eylül satışı Eylül kuru).
+//  • Ay henüz bitmediyse o ay için "bugüne kadarki son yayımlanmış kur" alınır ve
+//    raporda/arayüzde "ay sürüyor" olarak işaretlenir.
+//  • Ağ hatası/zaman aşımı artık kuru sessizce bir önceki iş gününe KAYDIRMAZ;
+//    net bir hata mesajı verir (eskiden 5 sn timeout'ta yanlış/eski kur yazılabiliyordu).
+//  • Gelecek tarihli satırlar içe aktarımda uyarı olarak bildirilir.
+//  • Arayüzde kullanılan kur(lar) gösterilir (💱 TRY kuru kutusu).
+// ════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════
 // LOKAL TIFFANY KOD PARSER (fallback)
 // ════════════════════════════════════════════════════════════════
@@ -1522,7 +1545,7 @@ function buildExcelData() {
   const total = CATS.reduce((a, c) => a + prims[c], 0);
   const flat = flattenRows();
 
-  // TRY figures, converted at each sale's own date
+  // v13.6: TRY satırları KENDİ AYININ son iş günü kuruyla çevrilir (ay bazlı kur)
   const tCat = {}; CATS.forEach(c => tCat[c] = { s: 0, p: 0 });
   let tSales = 0, tPrim = 0;
   if (fx) flat.forEach(x => {
@@ -1542,7 +1565,7 @@ function buildExcelData() {
   if (fx) {
     data.push(['Total Sales (₺)', n2(tSales)]);
     data.push(['Total Commission (₺)', n2(tPrim)]);
-    data.push(['FX Source', FX_SOURCE + ' — converted per sale date']);
+    data.push(['FX Source', fxSourceLabel()]);
   }
 
   data.push([]); data.push(['RATES']);
@@ -1596,7 +1619,8 @@ async function exportToExcel() {
   try {
     if (isTRY()) {
       btn.disabled = true; btn.textContent = '⏳ Fetching rates…';
-      await loadFxForDates(flattenRows().map(x => x.date));
+      // v13.6: dosyadaki TÜM aylar için kendi ay sonu kuru çekilir
+      await loadFxRatesForDates(flattenRows().map(x => x.date));
     }
     const fx = isTRY();
     const data = buildExcelData();
@@ -1622,7 +1646,7 @@ async function exportToExcel() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Commission Report');
     XLSX.writeFile(wb, `commission-report${fx ? '-TRY' : ''}-${todayISO()}.xlsx`);
-    showToast(fx ? '✓ Excel downloaded (with daily EUR/TRY rates)' : '✓ Excel downloaded');
+    showToast(fx ? `✓ Excel downloaded (TRY @ ${fxRateSummaryShort()})` : '✓ Excel downloaded');
   } catch (err) {
     showToast('Export failed: ' + err.message, 'error');
   } finally {
@@ -1933,7 +1957,9 @@ async function importExcelLocal(file) {
   let msg = `✓ ${parsedItems.length} products read (local parse)`;
   if (headerRowIdx > 0) msg += ` — header detected at row ${headerRowIdx + 1}`;
   if (importErrors.length > 0) msg += ` — ${importErrors.length} rows skipped`;
-  setXlsxStatus(importErrors.length > 0 ? 'processing' : 'success', msg);
+  const futRows = futureDateCount(parsedItems);   // v13.6: yanlış yıl / gelecek tarih uyarısı
+  if (futRows > 0) msg += ` — ⚠ ${futRows} rows have FUTURE dates (check the year!)`;
+  setXlsxStatus(importErrors.length > 0 || futRows > 0 ? 'processing' : 'success', msg);
   if (parsedItems.length === 0) throw new Error('No valid sales found');
 
   if (importErrors.length > 0) {
@@ -2111,7 +2137,10 @@ async function parseTeamWorkbook(file) {
   if (teamData.length === 0) throw new Error('No valid sales found in the file');
 
   const totalRows = teamData.reduce((a, p) => a + p.items.length, 0);
-  teamStatus('success', `✓ ${teamData.length} salespeople, ${totalRows} sales read`);
+  const futRows = futureDateCount(teamData.reduce((a, p) => a.concat(p.items), []));   // v13.6
+  teamStatus(futRows > 0 ? 'processing' : 'success',
+    `✓ ${teamData.length} salespeople, ${totalRows} sales read` +
+    (futRows > 0 ? ` — ⚠ ${futRows} rows have FUTURE dates (check the year!)` : ''));
   renderTeamPreview();
   $('teamExportBtn').disabled = false;
   $('teamExportSepBtn').disabled = false;
@@ -2148,9 +2177,11 @@ function safeSheetName(name, used) {
   return n;
 }
 
-// ── FX (EUR → TRY, TCMB daily rate) ──────────────────────────────
-let fxRates = {};
-let fxLoadedRange = '';
+// ── FX (EUR → TRY, TCMB — AY BAZINDA ayın son iş günü kuru) ──────
+// v13.6: Tek kur yerine AY BAZINDA kur tutulur. Her satır KENDİ AYININ son iş
+// günü (ay henüz sürüyorsa bugüne kadarki son yayımlanmış) TCMB kuruyla çevrilir.
+let fxRates = {};           // { 'YYYY-MM': { rate, date, isCurrent } }
+const FX_MAX_BACK = 15;     // yayın olmayan günler (hafta sonu/tatil) için geriye tarama sınırı
 const FX_SOURCE = 'T.C. Merkez Bankası (TCMB) döviz satış kuru';
 
 let fxContext = 'team';   // 'team' | 'single'
@@ -2159,7 +2190,48 @@ function teamCurrency() {
   return el ? el.value : 'EUR';
 }
 function isTRY() { return teamCurrency() === 'TRY'; }
-function fxFor(date) { return fxRates[date] || 0; }
+
+// 'YYYY-MM-DD' → 'YYYY-MM'
+function monthOf(iso) { return String(iso || '').slice(0, 7); }
+
+// v13.6: satırın KENDİ AYININ kuru kullanılır (eskiden tarih tamamen yok sayılıyordu)
+function fxFor(date) { const r = fxRates[monthOf(date)]; return r ? r.rate : 0; }
+
+// Bir ayın hedef günü: ay bittiyse ayın SON takvim günü, ay sürüyorsa bugün.
+// (Hafta sonu/tatil ayıklaması kur çekilirken "geriye tarama" ile yapılır.)
+function fxTargetForMonth(month) {
+  const [y, m] = String(month).split('-').map(Number);
+  const monthEnd = new Date(Date.UTC(y, m, 0));
+  const today = new Date();
+  const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+  const isCurrent = monthEnd > todayUTC;
+  return { ds: (isCurrent ? todayUTC : monthEnd).toISOString().slice(0, 10), isCurrent };
+}
+
+// Raporun en son AYININ hedef günü (bilgi/uyumluluk amaçlı)
+function lastDayOfReportMonth(isoDates) {
+  const months = [...new Set((isoDates || []).filter(Boolean).map(monthOf))].sort();
+  if (months.length === 0) return null;
+  return fxTargetForMonth(months[months.length - 1]).ds;
+}
+
+// Excel'e yazılan "FX Source" metni
+function fxSourceLabel() {
+  const months = Object.keys(fxRates).sort();
+  if (months.length === 0) return FX_SOURCE + ' — kur alınmadı';
+  return FX_SOURCE + ' — her ayın son iş günü kuru: ' + months.map(mo => {
+    const r = fxRates[mo];
+    return `${mo} → ${r.date} (${r.rate})${r.isCurrent ? ' [ay sürüyor]' : ''}`;
+  }).join(' | ');
+}
+
+// Kısa özet (toast / durum satırı)
+function fxRateSummaryShort() {
+  const months = Object.keys(fxRates).sort();
+  if (months.length === 0) return '—';
+  return months.map(mo => `${fxRates[mo].date} (${fxRates[mo].rate})`).join(', ');
+}
+
 function n2(v) { return +(+v).toFixed(2); }
 
 // TCMB has no public JSON/CORS API, so we go through a CORS proxy and
@@ -2193,78 +2265,115 @@ function parseTcmbXml(text) {
   return val;
 }
 const TCMB_WORKER = 'https://tcmbproxy.sbakbulut.workers.dev';
+const fxSleep = ms => new Promise(r => setTimeout(r, ms));
+const noDataError = msg => Object.assign(new Error(msg || 'o gün kur yayımlanmamış'), { noData: true });
+
+// v13.6: "o gün yayın yok" (noData) ile "kaynağa ulaşılamadı" (network) AYRILIR.
+// Worker'a 3 kez denenir (timeout 12 sn); sadece ağ hatasında genel proxy'lere düşülür.
 async function fetchTcmbRateForDate(ds) {
-  // 1) Cloudflare Worker — ulaşılabiliyorsa cevabına güven (404 = TCMB o gün yayın yapmamış,
-  //    bu proxy'lere düşülecek bir "hata" değil, sadece o günün kuru yok demektir)
-  try {
-    const res = await fetchWithTimeout(`${TCMB_WORKER}/tcmb?date=${ds}`, 5000);
-    const j = await res.json().catch(() => null);
-    if (j && j.rate) return j.rate;
-    if (j) throw Object.assign(new Error(j.error || 'no data'), { noData: true });
-  } catch (err) {
-    if (err && err.noData) throw err; // worker'a ulaşıldı, sadece o gün için veri yok → yedeklere düşme
-    // aşağıya devam et: worker'a hiç ulaşılamadı (ağ hatası/timeout)
+  let netErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetchWithTimeout(`${TCMB_WORKER}/tcmb?date=${ds}`, 12000);
+      const j = await res.json().catch(() => null);
+      if (j && j.rate) return j.rate;
+      if (j) throw noDataError(j.error || 'no data');   // worker'a ulaşıldı → o gün veri yok
+      netErr = new Error('boş cevap (HTTP ' + res.status + ')');
+    } catch (err) {
+      if (err && err.noData) throw err;   // o gün yayın yok → yedek proxy'lere düşme
+      netErr = err;
+    }
+    await fxSleep(350 * (attempt + 1));
   }
 
-  // 2) Genel CORS proxy'leri — sadece worker'a hiç ulaşılamadıysa (yedek)
+  // Yedek: genel CORS proxy'leri — sadece worker'a hiç ulaşılamadıysa
   const target = tcmbXmlUrl(ds);
-  let lastErr;
+  let lastErr = null;
   for (const proxy of TCMB_PROXIES) {
     try {
-      const res = await fetchWithTimeout(proxy.url(target), 10000);
+      const res = await fetchWithTimeout(proxy.url(target), 12000);
+      if (res.status === 404) throw noDataError('TCMB o gün yayın yapmamış (404)');
       if (!res.ok) throw new Error('HTTP ' + res.status);
       let text = await res.text();
       if (proxy.wrapped) { text = JSON.parse(text).contents; }
       return parseTcmbXml(text);
-    } catch (err) { lastErr = err; }
+    } catch (err) {
+      if (err && err.noData) throw err;
+      lastErr = err;
+    }
   }
-  throw lastErr || new Error('all proxies failed');
+  throw Object.assign(
+    new Error('TCMB kur kaynağına ulaşılamadı: ' + ((lastErr || netErr || {}).message || 'bilinmeyen hata')),
+    { network: true });
 }
 
-async function loadFxForDates(dates, onStatus) {
-  if (!dates || dates.length === 0) return;
-  const sorted = dates.slice().sort();
-  const start = sorted[0], end = sorted[sorted.length - 1];
-  const key = start + '..' + end;
-  if (fxLoadedRange === key && Object.keys(fxRates).length) return;
-
-  const back = new Date(start + 'T00:00:00Z');
-  back.setUTCDate(back.getUTCDate() - 5); // headroom so weekend/holiday gaps still have a prior published rate
-  const from = back.toISOString().slice(0, 10);
-
-  if (onStatus) onStatus('TCMB günlük EUR/TRY kurları alınıyor…');
-
-  const allDates = [];
-  { const cur = new Date(from + 'T00:00:00Z'); const endD = new Date(end + 'T00:00:00Z');
-    while (cur <= endD) { allDates.push(cur.toISOString().slice(0, 10)); cur.setUTCDate(cur.getUTCDate() + 1); } }
-
-  // Fetch all days in parallel (small concurrency batches) instead of one-by-one
-  const cache = {};
-  const CONCURRENCY = 8;
-  for (let i = 0; i < allDates.length; i += CONCURRENCY) {
-    const batch = allDates.slice(i, i + CONCURRENCY);
-    const results = await Promise.allSettled(batch.map(fetchTcmbRateForDate));
-    results.forEach((r, idx) => { if (r.status === 'fulfilled') cache[batch[idx]] = r.value; });
+// Hedef günden geriye doğru, TCMB'nin YAYIMLADIĞI ilk kuru bulur (hafta sonu/tatil köprüsü).
+// v13.6: SADECE "o gün yayın yok" durumunda geriye gider; ağ hatası/timeout durumunda kuru
+// sessizce kaydırmak yerine hata verir (eskiden 5 sn timeout'ta yanlış/eski kur yazılabiliyordu).
+async function fetchRateOnOrBefore(ds) {
+  const cur = new Date(ds + 'T00:00:00Z');
+  let netErr = null;
+  for (let i = 0; i < FX_MAX_BACK; i++) {
+    const day = cur.toISOString().slice(0, 10);
+    try {
+      return { rate: await fetchTcmbRateForDate(day), date: day };
+    } catch (err) {
+      if (err && err.noData) { cur.setUTCDate(cur.getUTCDate() - 1); continue; }
+      netErr = err; break;
+    }
   }
+  if (netErr) throw new Error('TCMB kuru alınamadı — internet bağlantınızı kontrol edin. (' + (netErr.message || '') + ')');
+  throw new Error(`TCMB'de ${FX_MAX_BACK} gün geriye kadar yayımlanmış kur bulunamadı (${ds})`);
+}
 
-  let last = null;
-  const newRates = {};
-  for (const ds of allDates) {
-    if (cache[ds] != null) last = cache[ds]; // weekends/holidays: TCMB publishes nothing → keep carrying the last known rate
-    if (last == null) continue; // still before the first available rate in range
-    newRates[ds] = last;
+// Rapor tarihlerindeki TÜM AYLAR için kur yükler (her ay için tek kur; ay bazlı cache).
+async function loadFxRatesForDates(isoDates, onStatus) {
+  const months = [...new Set((isoDates || []).filter(Boolean).map(monthOf))].sort();
+  for (const mo of months) {
+    if (fxRates[mo]) continue;                        // cache
+    const { ds, isCurrent } = fxTargetForMonth(mo);
+    if (onStatus) onStatus(`TCMB kuru alınıyor (${mo}${isCurrent ? ' — ay sürüyor' : ''})…`);
+    const r = await fetchRateOnOrBefore(ds);
+    fxRates[mo] = { rate: r.rate, date: r.date, isCurrent };
+    if (onStatus) onStatus(`✓ TCMB kuru ${mo}: ${r.date} = ${r.rate}`);
   }
-  if (Object.keys(newRates).length === 0) throw new Error('TCMB kur verisi alınamadı (bağlantınızı kontrol edin)');
+  renderFxNote();
+}
 
-  fxRates = newRates;
-  fxLoadedRange = key;
+// Eski çağrı biçimiyle uyumluluk (tek tarih → o ayın kuru)
+async function loadSingleFxRate(target, onStatus) {
+  if (!target) throw new Error('Kur için geçerli bir tarih yok');
+  await loadFxRatesForDates([target], onStatus);
 }
 
 async function ensureFxRates() {
   if (!isTRY()) return;
   const dates = [];
   teamData.forEach(p => p.stats.flat.forEach(x => dates.push(x.date)));
-  await loadFxForDates(dates, msg => teamStatus('processing', msg));
+  await loadFxRatesForDates(dates, msg => teamStatus('processing', msg));
+}
+
+// Arayüzde kullanılan kur(lar)ı gösterir ("💱 TRY kuru" kutusu)
+function renderFxNote() {
+  const el = $('fxNote');
+  if (!el) return;
+  if (!isTRY()) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const months = Object.keys(fxRates).sort();
+  el.style.display = 'block';
+  if (months.length === 0) {
+    el.innerHTML = '💱 TRY seçildi — TCMB kuru Excel indirilirken çekilecek (her ay için ayın son iş günü kuru).';
+    return;
+  }
+  el.innerHTML = '💱 TRY kuru (TCMB, her ayın son iş günü): ' + months.map(mo => {
+    const r = fxRates[mo];
+    return `${mo}${r.isCurrent ? ' <em>(ay sürüyor)</em>' : ''}: <strong>${r.date} = ${r.rate}</strong>`;
+  }).join(' &nbsp;|&nbsp; ');
+}
+
+// Gelecek tarihli satır sayısı (yanlış yıl yazımı uyarısı için)
+function futureDateCount(items) {
+  const today = todayISO();
+  return (items || []).filter(it => it && it.date && it.date > today).length;
 }
 
 function tryTotals(st) {
@@ -2296,7 +2405,7 @@ function buildPersonSheetData(person, target) {
   if (fx) {
     data.push(['Total Sales (₺)', n2(t.sales)]);
     data.push(['Total Commission (₺)', n2(t.prim)]);
-    data.push(['FX Source', FX_SOURCE + ' — converted per sale date']);
+    data.push(['FX Source', fxSourceLabel()]);
   }
 
   data.push([]); data.push(['RATES']);
@@ -2472,7 +2581,7 @@ async function exportTeamExcel() {
 
     XLSX.writeFile(wb, `team-commission-report${curSuffix()}-${todayISO()}.xlsx`);
     showToast(`✓ ${teamData.length} reports exported`);
-    teamStatus('success', `✓ Exported${isTRY() ? ' with daily EUR/TRY rates' : ''}. You can export again or close this window.`);
+    teamStatus('success', `✓ Exported${isTRY() ? ` (TRY @ ${fxRateSummaryShort()})` : ''}. You can export again or close this window.`);
   } catch (err) {
     teamStatus('error', err.message);
     showToast('Export failed: ' + err.message, 'error');
@@ -2566,6 +2675,16 @@ $('teamTargetInput').addEventListener('input', () => {
 });
 
 
+// v13.6: para birimi seçicileri — TRY seçilince kullanılacak kur bilgisi kutusu gösterilir
+['myCurrency', 'teamCurrency'].forEach(id => {
+  const el = $(id);
+  if (el) el.addEventListener('change', () => {
+    fxContext = id === 'myCurrency' ? 'single' : 'team';
+    renderFxNote();
+  });
+});
+
+
 // ════════════════════════════════════════════════════════════════
 // BUTTONS + INIT
 // ════════════════════════════════════════════════════════════════
@@ -2579,6 +2698,8 @@ loadSettings();
 renderSettingsInputs();
 buildCategories();
 update();
+fxContext = 'single';   // v13.6: varsayılan olarak "My Sales" kartının seçicisi
+renderFxNote();
 </script>
 
 </body>
