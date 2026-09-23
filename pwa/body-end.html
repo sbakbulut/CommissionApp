@@ -1,0 +1,130 @@
+<!-- PWA:BODY:START — kurulum (install) düğmesi + service worker kaydı.
+     publish.sh /sdcard'daki dosyayı index.html'e kopyaladıktan sonra bu bloğu otomatik enjekte eder; silmeyin. -->
+<script>
+/* CommissionApp — PWA kurulum yardımcısı
+   • Chrome/Edge/Android: "beforeinstallprompt" yakalanır → sağ altta "Install app" düğmesi çıkar.
+     (Chrome menüsündeki ⋮ → "Uygulamayı yükle" ile aynı işi yapar.)
+   • iOS Safari: kurulum API'si yok → Paylaş → "Ana Ekrana Ekle" yönergesi gösterilir.
+   • Uygulama zaten kuruluysa (standalone) düğme hiç görünmez.
+   • Service worker sadece https üzerinde kaydedilir (file:// ve http:// üzerinde sessizce atlanır). */
+(function () {
+  'use strict';
+
+  var installEvent = null;
+  var button = null;
+  var ua = navigator.userAgent;
+  var isIos = /iphone|ipad|ipod/i.test(ua);
+  var isIosSafari = isIos && !/crios|fxios|edgios|opios|mercury/i.test(ua);
+
+  function matches(query) {
+    return !!(window.matchMedia && window.matchMedia(query).matches);
+  }
+  function isStandalone() {
+    return matches('(display-mode: standalone)') || matches('(display-mode: minimal-ui)') ||
+           window.navigator.standalone === true;
+  }
+
+  /* ── 1) Service worker: çevrimdışı kabuk ─────────────────────────────── */
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./sw.js', { scope: './' }).then(function (reg) {
+        console.info('[PWA] service worker aktif (kapsam: ' + reg.scope + ')');
+      }).catch(function (err) {
+        console.warn('[PWA] service worker kaydedilemedi:', err);
+      });
+    });
+  }
+
+  /* ── 2) "Install app" düğmesi ────────────────────────────────────────── */
+  function hideButton() {
+    if (button && button.parentNode) button.parentNode.removeChild(button);
+    button = null;
+  }
+
+  function onInstallClick() {
+    if (installEvent) {
+      installEvent.prompt();
+      installEvent.userChoice.then(function (choice) {
+        if (choice && choice.outcome === 'accepted') hideButton();
+        installEvent = null;
+      });
+      return;
+    }
+    window.alert('To install: Chrome menu (⋮) → "Install app" / "Add to Home screen".\n' +
+                 'Kurulum: Chrome menüsü (⋮) → "Uygulamayı yükle".');
+  }
+
+  function showButton() {
+    if (button || isStandalone()) return;
+    var b = document.createElement('button');
+    b.id = 'pwaInstallBtn';
+    b.type = 'button';
+    b.setAttribute('aria-label', 'Install app');
+    b.style.cssText = [
+      'position:fixed',
+      'right:16px',
+      'bottom:calc(16px + env(safe-area-inset-bottom, 0px))',
+      'z-index:2147483000',
+      'display:inline-flex',
+      'align-items:center',
+      'gap:8px',
+      'padding:12px 18px',
+      'border:0',
+      'border-radius:999px',
+      'background:#0ABAB5',
+      'color:#FFFFFF',
+      'font:600 0.9rem/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif',
+      'letter-spacing:.02em',
+      'box-shadow:0 6px 20px rgba(10,186,181,.45)',
+      'cursor:pointer'
+    ].join(';');
+    b.innerHTML = '<span aria-hidden="true">\u2B07</span><span>Install app</span>';
+    b.addEventListener('click', onInstallClick);
+    document.body.appendChild(b);
+    button = b;
+  }
+
+  window.addEventListener('beforeinstallprompt', function (event) {
+    event.preventDefault();          // tarayıcının kendi mini bildirimi yerine kendi düğmemiz
+    installEvent = event;
+    showButton();
+  });
+
+  window.addEventListener('appinstalled', function () {
+    console.info('[PWA] uygulama kuruldu');
+    hideButton();
+  });
+
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(display-mode: standalone)');
+    var onModeChange = function () { if (isStandalone()) hideButton(); };
+    if (mq.addEventListener) mq.addEventListener('change', onModeChange);
+    else if (mq.addListener) mq.addListener(onModeChange);
+  }
+
+  // iOS Safari'de kurulum API'si yok → yönergeyi gösterebilmek için düğmeyi elle açıyoruz.
+  if (isIosSafari) window.addEventListener('load', function () { showButton(); });
+
+  /* ── 3) Teşhis yardımcısı (README'de anlatılır) ──────────────────────── */
+  window.commissionPwa = function () {
+    var reg = ('serviceWorker' in navigator) ? navigator.serviceWorker.getRegistration() : null;
+    return Promise.resolve(reg).then(function (r) {
+      var link = document.querySelector('link[rel="manifest"]');
+      var info = {
+        url: location.href,
+        https: location.protocol === 'https:',
+        standalone: isStandalone(),
+        manifestLink: link ? link.getAttribute('href') : null,
+        themeColor: (document.querySelector('meta[name="theme-color"]') || {}).content || null,
+        serviceWorker: r ? (r.active ? 'active' : r.installing ? 'installing' : 'waiting') : 'none',
+        installPromptCaptured: !!installEvent,
+        displayMode: ['standalone', 'minimal-ui', 'browser']
+          .filter(matches)[0] || 'unknown'
+      };
+      console.table ? console.table(info) : console.log(info);
+      return info;
+    });
+  };
+})();
+</script>
+<!-- PWA:BODY:END -->

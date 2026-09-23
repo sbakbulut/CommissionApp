@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Commission Calculator">
+  <rect width="192" height="192" rx="42" fill="#0ABAB5"/>
+  <g fill="#FFFFFF">
+    <rect x="49" y="100" width="20" height="38" rx="3"/>
+    <rect x="86" y="80" width="20" height="58" rx="3"/>
+    <rect x="123" y="58" width="20" height="80" rx="3"/>
+    <rect x="49" y="149" width="92" height="4"/>
+  </g>
+</svg>
