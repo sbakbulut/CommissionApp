@@ -11,7 +11,7 @@
 */
 'use strict';
 
-const VERSION = 'v13.7';
+const VERSION = 'v13.8';
 const SHELL = `commission-shell-${VERSION}`;
 const RUNTIME = `commission-runtime-${VERSION}`;
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'unpkg.com'];

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Commission Calculator v13.7</title>
+<title>Commission Calculator v13.8</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -734,7 +734,7 @@
      publish.sh /sdcard'daki dosyayı index.html'e kopyaladıktan sonra bu bloğu otomatik enjekte eder; silmeyin. -->
 <link rel="manifest" href="./manifest.json" />
 <meta name="theme-color" content="#0ABAB5" />
-<meta name="description" content="Sales commission calculator with per-month TCMB FX conversion and Excel export. Installable, offline-capable." />
+<meta name="description" content="Sales commission calculator with single-rate TCMB FX conversion (report month-end) and Excel export. Installable, offline-capable." />
 <meta name="color-scheme" content="light" />
 <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
@@ -784,7 +784,7 @@
         <button class="export-btn ocr" id="teamBtn">👥 Team Report</button>
         <select class="settings-input" id="myCurrency" style="max-width: 170px; padding: 8px 10px;" title="Export currency">
           <option value="EUR">€ EUR (original)</option>
-          <option value="TRY">₺ TRY (ayın son kuru)</option>
+          <option value="TRY">₺ TRY (rapor ayı son kuru)</option>
         </select>
         <button class="export-btn" id="exportExcelBtn">📊 Excel (My Sales)</button>
         <button class="export-btn ghost" id="resetBtn">🗑️ Reset</button>
@@ -862,7 +862,7 @@
         <label for="teamCurrency" style="font-size: 0.78rem; color: var(--tiffany-gray);">Currency</label>
         <select class="settings-input" id="teamCurrency" style="max-width: 210px;">
           <option value="EUR">€ EUR (original)</option>
-          <option value="TRY">₺ TRY (ayın son kuru)</option>
+          <option value="TRY">₺ TRY (rapor ayı son kuru)</option>
         </select>
       </div>
       <button class="export-btn ghost" id="teamCancelBtn">Cancel</button>
@@ -874,15 +874,16 @@
 
 <script>
 // ════════════════════════════════════════════════════════════════
-// v13.6 — TRY / KUR DÜZELTMELERİ
-//  • TRY çevirimi artık AY BAZINDA: her satır kendi ayının son iş günü kuruyla
-//    çevrilir (Ağustos satışı Ağustos kuru, Eylül satışı Eylül kuru).
+// v13.8 — TRY / KUR DAVRANIŞI (TEK KUR)
+//  • TRY çevirimi artık RAPOR GENELİNDE TEK KURLA yapılır: raporda geçen EN SON
+//    satış ayının (rapor ayı) son iş günü TCMB döviz satış kuru, tüm satırlara
+//    aynı şekilde uygulanır (Ağustos + Eylül satırları varsa tek kur kullanılır).
 //  • Ay henüz bitmediyse o ay için "bugüne kadarki son yayımlanmış kur" alınır ve
 //    raporda/arayüzde "ay sürüyor" olarak işaretlenir.
-//  • Ağ hatası/zaman aşımı artık kuru sessizce bir önceki iş gününe KAYDIRMAZ;
-//    net bir hata mesajı verir (eskiden 5 sn timeout'ta yanlış/eski kur yazılabiliyordu).
+//  • Ağ hatası/zaman aşımı kuru sessizce bir önceki iş gününe KAYDIRMAZ;
+//    net bir hata mesajı verir (kur uydurulmaz).
 //  • Gelecek tarihli satırlar içe aktarımda uyarı olarak bildirilir.
-//  • Arayüzde kullanılan kur(lar) gösterilir (💱 TRY kuru kutusu).
+//  • Arayüzde kullanılan kur gösterilir (💱 TRY kuru kutusu).
 // ════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════
 // LOKAL TIFFANY KOD PARSER (fallback)
@@ -1559,7 +1560,7 @@ function buildExcelData() {
   const total = CATS.reduce((a, c) => a + prims[c], 0);
   const flat = flattenRows();
 
-  // v13.6: TRY satırları KENDİ AYININ son iş günü kuruyla çevrilir (ay bazlı kur)
+  // v13.8: TRY satırlarının TÜMÜ rapor ayının son iş günü TEK kuruyla çevrilir
   const tCat = {}; CATS.forEach(c => tCat[c] = { s: 0, p: 0 });
   let tSales = 0, tPrim = 0;
   if (fx) flat.forEach(x => {
@@ -1633,7 +1634,7 @@ async function exportToExcel() {
   try {
     if (isTRY()) {
       btn.disabled = true; btn.textContent = '⏳ Fetching rates…';
-      // v13.6: dosyadaki TÜM aylar için kendi ay sonu kuru çekilir
+      // v13.8: rapor ayı (dosyadaki en son satış ayı) için TEK kur çekilir
       await loadFxRatesForDates(flattenRows().map(x => x.date));
     }
     const fx = isTRY();
@@ -2191,10 +2192,12 @@ function safeSheetName(name, used) {
   return n;
 }
 
-// ── FX (EUR → TRY, TCMB — AY BAZINDA ayın son iş günü kuru) ──────
-// v13.6: Tek kur yerine AY BAZINDA kur tutulur. Her satır KENDİ AYININ son iş
-// günü (ay henüz sürüyorsa bugüne kadarki son yayımlanmış) TCMB kuruyla çevrilir.
-let fxRates = {};           // { 'YYYY-MM': { rate, date, isCurrent } }
+// ── FX (EUR → TRY, TCMB — RAPOR AYININ son iş günü TEK kuru) ─────
+// v13.8: Raporun TÜM satırları TEK kurla çevrilir: raporda geçen EN SON satış
+// ayının (rapor ayı) son iş günü — ay henüz sürüyorsa bugüne kadarki son
+// yayımlanmış — TCMB döviz satış kuru. (v13.6'da her satır kendi ayının kuruyla
+// çevriliyordu; karışık ay raporlarında satır başına farklı kur oluşuyordu.)
+let fxRate = null;          // { rate, date, target, month, isCurrent } — rapor geneli TEK kur
 const FX_MAX_BACK = 15;     // yayın olmayan günler (hafta sonu/tatil) için geriye tarama sınırı
 const FX_SOURCE = 'T.C. Merkez Bankası (TCMB) döviz satış kuru';
 
@@ -2208,8 +2211,8 @@ function isTRY() { return teamCurrency() === 'TRY'; }
 // 'YYYY-MM-DD' → 'YYYY-MM'
 function monthOf(iso) { return String(iso || '').slice(0, 7); }
 
-// v13.6: satırın KENDİ AYININ kuru kullanılır (eskiden tarih tamamen yok sayılıyordu)
-function fxFor(date) { const r = fxRates[monthOf(date)]; return r ? r.rate : 0; }
+// v13.8: satırın tarihi yok sayılır — rapordaki tüm satırlar rapor ayının TEK kuruyla çevrilir
+function fxFor(_date) { return fxRate ? fxRate.rate : 0; }
 
 // Bir ayın hedef günü: ay bittiyse ayın SON takvim günü, ay sürüyorsa bugün.
 // (Hafta sonu/tatil ayıklaması kur çekilirken "geriye tarama" ile yapılır.)
@@ -2222,28 +2225,27 @@ function fxTargetForMonth(month) {
   return { ds: (isCurrent ? todayUTC : monthEnd).toISOString().slice(0, 10), isCurrent };
 }
 
-// Raporun en son AYININ hedef günü (bilgi/uyumluluk amaçlı)
-function lastDayOfReportMonth(isoDates) {
+// Rapor ayı: raporda geçen EN SON satış ayı ('YYYY-MM'); hiç satır yoksa bugünün ayı.
+function fxReportMonth(isoDates) {
   const months = [...new Set((isoDates || []).filter(Boolean).map(monthOf))].sort();
-  if (months.length === 0) return null;
-  return fxTargetForMonth(months[months.length - 1]).ds;
+  return months.length ? months[months.length - 1] : monthOf(todayISO());
 }
 
-// Excel'e yazılan "FX Source" metni
+// Raporun en son AYININ hedef günü (= kullanılan TEK kurun çekileceği gün)
+function lastDayOfReportMonth(isoDates) {
+  return fxTargetForMonth(fxReportMonth(isoDates)).ds;
+}
+
+// Excel'e yazılan "FX Source" metni — rapor genelinde TEK kur
 function fxSourceLabel() {
-  const months = Object.keys(fxRates).sort();
-  if (months.length === 0) return FX_SOURCE + ' — kur alınmadı';
-  return FX_SOURCE + ' — her ayın son iş günü kuru: ' + months.map(mo => {
-    const r = fxRates[mo];
-    return `${mo} → ${r.date} (${r.rate})${r.isCurrent ? ' [ay sürüyor]' : ''}`;
-  }).join(' | ');
+  if (!fxRate) return FX_SOURCE + ' — kur alınmadı';
+  return FX_SOURCE + ` — rapor ayı (${fxRate.month}) son iş günü TEK kuru: ` +
+    `${fxRate.date} = ${fxRate.rate}${fxRate.isCurrent ? ' [ay sürüyor]' : ''} — tüm satırlara aynı kur uygulandı`;
 }
 
 // Kısa özet (toast / durum satırı)
 function fxRateSummaryShort() {
-  const months = Object.keys(fxRates).sort();
-  if (months.length === 0) return '—';
-  return months.map(mo => `${fxRates[mo].date} (${fxRates[mo].rate})`).join(', ');
+  return fxRate ? `${fxRate.date} (${fxRate.rate})` : '—';
 }
 
 function n2(v) { return +(+v).toFixed(2); }
@@ -2340,21 +2342,20 @@ async function fetchRateOnOrBefore(ds) {
   throw new Error(`TCMB'de ${FX_MAX_BACK} gün geriye kadar yayımlanmış kur bulunamadı (${ds})`);
 }
 
-// Rapor tarihlerindeki TÜM AYLAR için kur yükler (her ay için tek kur; ay bazlı cache).
+// v13.8: Rapor için TEK kur yükler — rapor ayının (en son satış ayı) son iş günü kuru.
+// Kur rapordaki tüm satırlara uygulanır; aynı hedef gün için tekrar ağ isteği yapılmaz.
 async function loadFxRatesForDates(isoDates, onStatus) {
-  const months = [...new Set((isoDates || []).filter(Boolean).map(monthOf))].sort();
-  for (const mo of months) {
-    if (fxRates[mo]) continue;                        // cache
-    const { ds, isCurrent } = fxTargetForMonth(mo);
-    if (onStatus) onStatus(`TCMB kuru alınıyor (${mo}${isCurrent ? ' — ay sürüyor' : ''})…`);
-    const r = await fetchRateOnOrBefore(ds);
-    fxRates[mo] = { rate: r.rate, date: r.date, isCurrent };
-    if (onStatus) onStatus(`✓ TCMB kuru ${mo}: ${r.date} = ${r.rate}`);
-  }
+  const month = fxReportMonth(isoDates);
+  const { ds, isCurrent } = fxTargetForMonth(month);
+  if (fxRate && fxRate.target === ds && fxRate.rate > 0) return;   // cache (aynı hedef gün)
+  if (onStatus) onStatus(`TCMB kuru alınıyor (rapor ayı ${month}${isCurrent ? ' — ay sürüyor' : ''})…`);
+  const r = await fetchRateOnOrBefore(ds);
+  fxRate = { rate: r.rate, date: r.date, target: ds, month, isCurrent };
+  if (onStatus) onStatus(`✓ TCMB kuru ${month}: ${r.date} = ${r.rate}`);
   renderFxNote();
 }
 
-// Eski çağrı biçimiyle uyumluluk (tek tarih → o ayın kuru)
+// Belirli bir gün için tek kur yükler (eski çağrı biçimiyle uyumluluk)
 async function loadSingleFxRate(target, onStatus) {
   if (!target) throw new Error('Kur için geçerli bir tarih yok');
   await loadFxRatesForDates([target], onStatus);
@@ -2367,21 +2368,18 @@ async function ensureFxRates() {
   await loadFxRatesForDates(dates, msg => teamStatus('processing', msg));
 }
 
-// Arayüzde kullanılan kur(lar)ı gösterir ("💱 TRY kuru" kutusu)
+// Arayüzde kullanılan TEK kuru gösterir ("💱 TRY kuru" kutusu)
 function renderFxNote() {
   const el = $('fxNote');
   if (!el) return;
   if (!isTRY()) { el.style.display = 'none'; el.innerHTML = ''; return; }
-  const months = Object.keys(fxRates).sort();
   el.style.display = 'block';
-  if (months.length === 0) {
-    el.innerHTML = '💱 TRY seçildi — TCMB kuru Excel indirilirken çekilecek (her ay için ayın son iş günü kuru).';
+  if (!fxRate) {
+    el.innerHTML = '💱 TRY seçildi — TCMB kuru Excel indirilirken çekilecek (rapor ayının son iş günü kuru, tüm satırlara tek kur).';
     return;
   }
-  el.innerHTML = '💱 TRY kuru (TCMB, her ayın son iş günü): ' + months.map(mo => {
-    const r = fxRates[mo];
-    return `${mo}${r.isCurrent ? ' <em>(ay sürüyor)</em>' : ''}: <strong>${r.date} = ${r.rate}</strong>`;
-  }).join(' &nbsp;|&nbsp; ');
+  el.innerHTML = `💱 TRY kuru (TCMB, rapor ayı ${fxRate.month}${fxRate.isCurrent ? ' <em>— ay sürüyor</em>' : ''} son iş günü, tüm satırlara tek kur): ` +
+    `<strong>${fxRate.date} = ${fxRate.rate}</strong>`;
 }
 
 // Gelecek tarihli satır sayısı (yanlış yıl yazımı uyarısı için)

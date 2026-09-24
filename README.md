@@ -54,30 +54,44 @@ manifest bağlantısı, service worker durumu, standalone modu ve kurulum isteğ
 | `pwa/head.html`, `pwa/body-end.html` | `index.html`'e gömülen PWA bloklarının **kaynak kopyası** (publish.sh enjekte eder) |
 | `tools/make-icons.py` | İkonları bağımlılık olmadan üretir/denetler (PIL/ImageMagick gerekmez) |
 | `tools/check-pwa.mjs` | Kurulabilirlik ölçütlerini ve blok senkronizasyonunu denetler (57 kontrol) |
+| `tools/check-fx.mjs` | TRY kur çevrimini denetler: rapor ayı, son iş günü, **tek kur** (ağ erişimi gerekmez) |
 
 > `index.html` tek dosyalık kalmaya devam eder: PWA etiketleri ve kurulum düğmesi dosyanın içine gömülüdür.
 
-## TRY (₺) kur dönüşümü — v13.6
+## TRY (₺) kur dönüşümü — v13.8 (rapor ayı son iş günü, **TEK** kur)
 
-Satış tutarları EUR ise TL karşılığı **her satırın KENDİ AYININ** TCMB döviz satış kuru ile hesaplanır:
+Satış tutarları EUR ise TL karşılığı **raporun tamamı için tek kurla** hesaplanır:
+raporda geçen **en son satış ayının (rapor ayı)** TCMB döviz satış kuru, tüm satırlara
+— hangi aya/güne ait olursa olsun — aynı şekilde uygulanır.
 
 | Konu | Davranış |
 |---|---|
 | Kur kaynağı | TCMB (`kurlar/YYYYMM/DDMMYYYY.xml`) — Cloudflare worker proxy + 5 yedek proxy |
-| Hedef gün | Ayın **son iş günü** (hafta sonu/tatil atlanır) |
+| Kullanılan gün | Rapor ayının **son iş günü** (hafta sonu/tatil atlanır) |
+| Rapor ayı | Dosyadaki **en son** satış ayı (örn. Ağustos + Eylül satırları varsa Eylül) |
+| Uygulama alanı | **Tüm satırlar aynı kuru kullanır** — satır/ay/gün başına ayrı kur yoktur |
 | Ay henüz bitmediyse | Bugünden geriye ilk yayımlanmış gün + Excel'de `[ay sürüyor]` etiketi |
 | O gün yayım yok (404) | En fazla 15 gün geriye taranır |
 | Ağ hatası/timeout | **Kur uydurulmaz** — net hata verilir (`TCMB kuru alınamadı…`) |
-| Rapor şeffaflığı | Excel'de `FX Source` satırı + her satırda `EUR/TRY` kolonu |
-| Arayüz | `💱 TRY kuru` kutusu kullanılan kurları gösterir |
+| Rapor şeffaflığı | Excel'de `FX Source` satırı rapor ayını + kullanılan tek kuru yazar; `EUR/TRY` kolonları aynı kuru gösterir |
+| Arayüz | `💱 TRY kuru` kutusu kullanılan tek kuru gösterir |
 
-### v13.6'da düzeltilen hatalar
+### Kur davranışının sürüm geçmişi
 
-1. **Ay bazlı kur yoktu:** tüm rapor tek (rapor ayının) kuruyla çevriliyordu → karışık ay dosyalarında yanlış TL.
-2. **Sessiz hatalı kur:** kur isteği 5 sn'de zaman aşımına uğrayınca kod sessizce bir önceki iş gününün kuruna düşüyordu.
-   Örnek: 31.08.2026 (55,9658) alınamayınca 28.08.2026 (56,0853) kullanılıyordu → 10.000 € için 1.195 TL fazla.
-   Artık istek 12 sn + 3 deneme; hata sessizce yutulmaz.
-3. **Yanlış yıl / gelecek tarihli satır** içe aktarımda uyarı verir.
+| Sürüm | Davranış |
+|---|---|
+| v13.4 | Satır başına **günlük** kur (her gün kendi kuruyla → satırlar farklı kur) |
+| v13.5 | Tek kur — raporun son ayının son iş günü (`fxSingleRate`) |
+| v13.6 | **Ay bazlı** kur — her satır kendi ayının kuruyla (karışık ay raporunda birden fazla kur) |
+| **v13.8** | **Tek kur — rapor ayının son iş günü** (tüm satırlara aynı kur; ay bazlı davranış kaldırıldı) |
+
+### v13.8'de değişenler
+
+1. **Ay bazlı kur kaldırıldı:** karışık ay dosyalarında (örn. Ağustos + Eylül satırları) satırlar
+   farklı kurlarla çevriliyordu → artık rapor genelinde **tek** kur kullanılır (rapor ayı = en son satış ayı).
+2. **v13.6'dan korunan düzeltmeler:** sessiz hatalı kur (zaman aşımında bir önceki iş gününün kuruna düşme)
+   giderildi — örnek: 31.08.2026 (55,9658) alınamayınca 28.08.2026 (56,0853) kullanılıyordu → 10.000 € için
+   1.195 TL fazla; yanlış yıl / gelecek tarihli satırlar içe aktarımda uyarı verir.
 
 ## Kullanım (geliştirme / yayın)
 
@@ -99,16 +113,19 @@ Yayın öncesi kurulabilirlik denetimi:
 
 ```bash
 node tools/check-pwa.mjs          # 57 kontrol: manifest, ikonlar, meta etiketler, sw.js, blok senkronizasyonu
+node tools/check-fx.mjs           # TRY kur çevrimi: rapor ayı + son iş günü + TEK kur (ay/gün bazlı kur olmadığı)
 python3 tools/make-icons.py       # ikonları yeniden üretir ve denetler (opsiyonel)
 python3 -m http.server 8080       # yerel test: http://localhost:8080
 ```
 
 ## Sürüm
 
+- `v13.8` — **TRY çevrimi TEK kur**: rapor ayının (dosyadaki en son satış ayı) son iş günü TCMB kuru
+  tüm satırlara uygulanır; ay bazlı/gün bazlı kur kaldırıldı, `tools/check-fx.mjs` eklendi
 - `v13.7` — **PWA kurulumu**: `manifest.json` (192/512 ikon), `sw.js` (network-first + çevrimdışı kabuk), `icons/`,
   tema/ikon meta etiketleri, `⬇ Install app` düğmesi, `commissionPwa()` teşhis yardımcısı,
   `tools/check-pwa.mjs` + `tools/make-icons.py`
-- `v13.6` — ay bazlı TCMB kuru, ağ hatası ayrımı, `[ay sürüyor]` etiketi, `💱 TRY kuru` kutusu, gelecek tarih uyarısı
+- `v13.6` — ay bazlı TCMB kuru (v13.8'de tek kura döndü), ağ hatası ayrımı, `[ay sürüyor]` etiketi, `💱 TRY kuru` kutusu, gelecek tarih uyarısı
 - `v13.4` — önceki sürüm (repodaki ilk `index.html`)
 
 ## Not
