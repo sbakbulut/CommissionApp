@@ -1622,6 +1622,15 @@ function buildExcelData() {
   return data;
 }
 
+// Dosya adı: "<satış danışmanı adı> <satış ayı>" — örn. "safa bekir akbulut ekim.xlsx"
+const trMonths = ['ocak', 'şubat', 'mart', 'nisan', 'mayıs', 'haziran', 'temmuz', 'ağustos', 'eylül', 'ekim', 'kasım', 'aralık'];
+function myReportFileName() {
+  const name = (salespersonName || 'commission report').replace(/İ/g, 'i').toLowerCase()
+    .replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim() || 'commission report';
+  const m = fxReportMonth(flattenRows().map(x => x.date));
+  return `${name} ${trMonths[Number(m.slice(5, 7)) - 1] || ''}`.trim() + '.xlsx';
+}
+
 function hasAnySales() {
   return CATS.some(c => rows[c].some(r => (r.value || 0) > 0));
 }
@@ -1660,7 +1669,7 @@ async function exportToExcel() {
     }
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Commission Report');
-    XLSX.writeFile(wb, `commission-report${fx ? '-TRY' : ''}-${todayISO()}.xlsx`);
+    XLSX.writeFile(wb, myReportFileName());
     showToast(fx ? `✓ Excel downloaded (TRY @ ${fxRateSummaryShort()})` : '✓ Excel downloaded');
   } catch (err) {
     showToast('Export failed: ' + err.message, 'error');
