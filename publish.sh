@@ -26,6 +26,46 @@ command -v gh >/dev/null 2>&1 || { echo "HATA: gh CLI bulunamadi (https://cli.gi
 
 [ -f "$SRC" ] || { echo "HATA: kaynak dosya yok: $SRC"; exit 1; }
 
+# ── GitHub'daki değişiklikleri /sdcard dosyasına al ──────────────────────────
+# index.html GitHub'da (ör. bir PR ile) değişmiş olabilir. Önce bu değişiklikler
+# /sdcard dosyasına alınır; aksi halde cp onları sessizce siler.
+# Taban = /sdcard dosyasının son eşit olduğu commit (.git/publish-base dosyasında).
+cd "$REPO_DIR"
+git pull --ff-only -q || { echo "HATA: git pull basarisiz — once repodaki durumu duzeltin."; exit 1; }
+
+strip_pwa() {   # PWA bloklarını çıkarır → /sdcard dosyasıyla karşılaştırılabilir hal
+  awk '/<!-- PWA:(HEAD|BODY):START/{skip=1} !skip{print} /<!-- PWA:(HEAD|BODY):END -->/{skip=0}'
+}
+
+BASE_FILE="$REPO_DIR/.git/publish-base"
+BASE_COMMIT="$(cat "$BASE_FILE" 2>/dev/null || true)"
+git cat-file -e "${BASE_COMMIT:-x}^{commit}" 2>/dev/null || BASE_COMMIT="4330782"   # v13.8 — son publish.sh commit'i
+SYNC_DIR="$(mktemp -d)"
+trap 'rm -rf "$SYNC_DIR"' EXIT
+git show "$BASE_COMMIT:index.html" | strip_pwa > "$SYNC_DIR/base.html"
+strip_pwa < "$DST" > "$SYNC_DIR/repo.html"
+
+if ! cmp -s "$SYNC_DIR/base.html" "$SYNC_DIR/repo.html" && ! cmp -s "$SRC" "$SYNC_DIR/repo.html"; then
+  BACKUP="$SRC.bak-$(date +%Y%m%d-%H%M%S)"
+  cp -f "$SRC" "$BACKUP"
+  if cmp -s "$SRC" "$SYNC_DIR/base.html"; then
+    cp -f "$SYNC_DIR/repo.html" "$SRC"
+    echo "OK: GitHub'daki degisiklikler /sdcard dosyasina alindi (yedek: $BACKUP)"
+  elif git merge-file -p -L sdcard -L onceki -L github \
+         "$SRC" "$SYNC_DIR/base.html" "$SYNC_DIR/repo.html" > "$SYNC_DIR/merged.html"; then
+    cp -f "$SYNC_DIR/merged.html" "$SRC"
+    echo "OK: GitHub ve /sdcard degisiklikleri birlestirildi (yedek: $BACKUP)"
+  else
+    CONFLICT="$SRC.cakisma.html"
+    cp -f "$SYNC_DIR/merged.html" "$CONFLICT"
+    echo "HATA: GitHub ve /sdcard ayni satirlari degistirmis — commit edilmedi."
+    echo "  Cakisma dosyasi: $CONFLICT  (<<<<<<< / >>>>>>> isaretli yerleri duzeltin,"
+    echo "  sonra bu dosyayi '$SRC' uzerine kopyalayip publish.sh'i tekrar calistirin)"
+    exit 1
+  fi
+fi
+cmp -s "$SRC" "$SYNC_DIR/repo.html" && git rev-parse HEAD > "$BASE_FILE"
+
 VERSION="$(grep -o '<title>[^<]*</title>' "$SRC" | sed -E 's/.*(v[0-9]+(\.[0-9]+)*).*/\1/')"
 [ -n "$MSG" ] || MSG="${VERSION}: commission calculator update"
 
@@ -84,6 +124,7 @@ if git diff --cached --quiet; then
   exit 0
 fi
 git commit -q -m "$MSG"
+git rev-parse HEAD > "$BASE_FILE"
 if [ "$PUSH" -eq 1 ]; then
   git push
   echo "TAMAM: $MSG"
