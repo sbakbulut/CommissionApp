@@ -15,7 +15,7 @@ pub mod money;
 use std::fmt;
 use std::str::FromStr;
 
-pub use money::{Money, ParseMoneyError, Rate};
+pub use money::{FxRate, Money, ParseMoneyError, Rate};
 
 /// Ürün kategorisi. `enum` olduğu için yazım hatası derleme anında yakalanır.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,6 +33,26 @@ impl Category {
         Category::Others,
         Category::Watches,
     ];
+
+    /// Sıra numarası. Web uygulamasındaki `CATS` dizisi ile aynı sıra.
+    pub const fn index(self) -> u32 {
+        match self {
+            Category::Silver => 0,
+            Category::Icon => 1,
+            Category::Others => 2,
+            Category::Watches => 3,
+        }
+    }
+
+    pub const fn from_index(index: u32) -> Option<Category> {
+        match index {
+            0 => Some(Category::Silver),
+            1 => Some(Category::Icon),
+            2 => Some(Category::Others),
+            3 => Some(Category::Watches),
+            _ => None,
+        }
+    }
 
     pub const fn label(self) -> &'static str {
         match self {

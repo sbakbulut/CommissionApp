@@ -194,6 +194,12 @@ impl Rate {
     /// Yuvarlama: yarım yukarı (sıfırdan uzağa). 1,515 → 1,52; -1,515 → -1,52.
     /// Ara hesap `i128` ile yapılır, taşma (overflow) olmaz.
     pub fn apply(self, amount: Money) -> Money {
+        self.checked_apply(amount)
+            .expect("komisyon i64 sınırını aştı")
+    }
+
+    /// `apply` ile aynı, ama sonuç `i64` sınırını aşarsa panik yerine `None` döner.
+    pub fn checked_apply(self, amount: Money) -> Option<Money> {
         let product = i128::from(amount.0) * i128::from(self.0);
         let divisor = i128::from(Self::BP_PER_ONE);
         let (quotient, remainder) = (product / divisor, product % divisor);
@@ -202,7 +208,25 @@ impl Rate {
         } else {
             quotient
         };
-        Money(i64::try_from(rounded).expect("komisyon i64 sınırını aştı"))
+        i64::try_from(rounded).ok().map(Money)
+    }
+}
+
+/// Döviz kuru, 4 ondalık basamak (TCMB biçimi). `36,1234` → `361234`.
+///
+/// Matematik olarak bir orandır: `Rate` ile aynı birim (1/10.000).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FxRate(Rate);
+
+impl FxRate {
+    /// `FxRate::from_ten_thousandths(361_234)` = 36,1234
+    pub const fn from_ten_thousandths(value: i64) -> FxRate {
+        FxRate(Rate::from_bp(value))
+    }
+
+    /// Tutarı çevirir ve cent'e yuvarlar (yarım yukarı).
+    pub fn convert(self, amount: Money) -> Option<Money> {
+        self.0.checked_apply(amount)
     }
 }
 
@@ -272,6 +296,27 @@ mod tests {
         assert_eq!(
             Rate::from_bp(150).apply(Money::from_euros(-101)),
             Money::from_cents(-152)
+        );
+    }
+
+    #[test]
+    fn fx_conversion_rounds_half_up() {
+        let fx = FxRate::from_ten_thousandths(361_234); // 36,1234
+        // 1,52 € × 36,1234 = 54,907568 ₺ → 54,91 ₺
+        assert_eq!(
+            fx.convert(Money::from_cents(152)),
+            Some(Money::from_cents(5_491))
+        );
+        // 0,50 € × 1,0001 = 0,50005 → 0,50
+        let near_one = FxRate::from_ten_thousandths(10_001);
+        assert_eq!(
+            near_one.convert(Money::from_cents(50)),
+            Some(Money::from_cents(50))
+        );
+        // Taşma panik yapmaz.
+        assert_eq!(
+            Rate::from_bp(i64::MAX).checked_apply(Money::from_cents(i64::MAX)),
+            None
         );
     }
 

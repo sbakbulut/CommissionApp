@@ -1,9 +1,9 @@
 [package]
 name = "commission-core"
-version = "0.1.0"
-edition = "2024"
 description = "CommissionApp komisyon kuralları — tam sayı (cent) ile, float hatası olmadan"
-publish = false
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
 
 # Bilerek dış bağımlılık yok: yalnız standart kütüphane.
 [dependencies]

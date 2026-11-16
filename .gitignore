@@ -13,4 +13,5 @@ __pycache__/
 commission-report-*.xlsx
 
 # Rust derleme ciktisi (rust/commission-core)
+rust/target/
 rust/**/target/
