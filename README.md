@@ -102,6 +102,10 @@ raporda geçen **en son satış ayının (rapor ayı)** TCMB döviz satış kuru
 ./publish.sh --no-push "deneme"   # sadece commit, push yok
 ```
 
+`publish.sh` telefondaki `/sdcard` dosyasına **hiç yazmaz**. GitHub'daki `index.html` telefonda
+olmayan değişiklikler içeriyorsa (ör. birleştirilmiş bir PR) betik durur ve uyarır. O zaman
+GitHub'daki sürümü telefona kendin kopyala, sonra betiği tekrar çalıştır.
+
 `publish.sh` kopyalamadan sonra:
 
 1. `pwa/head.html` ve `pwa/body-end.html` bloklarını `index.html`'e **idempotent** olarak enjekte eder
@@ -114,9 +118,23 @@ Yayın öncesi kurulabilirlik denetimi:
 ```bash
 node tools/check-pwa.mjs          # 57 kontrol: manifest, ikonlar, meta etiketler, sw.js, blok senkronizasyonu
 node tools/check-fx.mjs           # TRY kur çevrimi: rapor ayı + son iş günü + TEK kur (ay/gün bazlı kur olmadığı)
+node tools/check-wasm.mjs         # Rust/WASM hesap çekirdeği: WASM = JS yedeği = referans (48 milyon hesap)
 python3 tools/make-icons.py       # ikonları yeniden üretir ve denetler (opsiyonel)
 python3 -m http.server 8080       # yerel test: http://localhost:8080
 ```
+
+## Hesap çekirdeği (Rust → WebAssembly)
+
+Komisyon ve TL hesabı Rust ile yazılmıştır (`rust/`). Rust kodu 2,6 KB'lık bir WASM dosyasına
+derlenir ve `index.html` içine gömülür. Para **cent olarak tam sayı** ile hesaplanır, bu yüzden
+float kuruş hatası olmaz (örn. 101 € × %1,5 = **1,52 €**; eski hesap 1,51 € veriyordu).
+
+- Kuralları değiştirirsen: `rust/build-wasm.sh` çalıştır, sonra `node tools/check-wasm.mjs`.
+- JS oranları Rust ile uyuşmazsa sayfa WASM'ı kullanmaz, JS yedeğine geçer (o da tam sayı ile hesaplar).
+- Alt bilgide `Calc engine: Rust/WASM` yazısı hangi motorun çalıştığını gösterir.
+- `cargo run -p commission-cli -- rapor.xlsx` uygulamanın Excel raporunu yeniden hesaplar ve denetler.
+
+Ayrıntılar: [`rust/README.md`](rust/README.md)
 
 ## Sürüm
 

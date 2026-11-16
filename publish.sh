@@ -26,9 +26,9 @@ command -v gh >/dev/null 2>&1 || { echo "HATA: gh CLI bulunamadi (https://cli.gi
 
 [ -f "$SRC" ] || { echo "HATA: kaynak dosya yok: $SRC"; exit 1; }
 
-# ── GitHub'daki değişiklikleri /sdcard dosyasına al ──────────────────────────
-# index.html GitHub'da (ör. bir PR ile) değişmiş olabilir. Önce bu değişiklikler
-# /sdcard dosyasına alınır; aksi halde cp onları sessizce siler.
+# ── GitHub'da /sdcard'da olmayan değişiklik var mı? ───────────────────────────
+# index.html GitHub'da (ör. bir PR ile) değişmiş olabilir. Betik /sdcard dosyasına
+# YAZMAZ. Bu durumda durur ve uyarır; aksi halde cp o değişiklikleri sessizce siler.
 # Taban = /sdcard dosyasının son eşit olduğu commit (.git/publish-base dosyasında).
 cd "$REPO_DIR"
 git pull --ff-only -q || { echo "HATA: git pull basarisiz — once repodaki durumu duzeltin."; exit 1; }
@@ -46,23 +46,12 @@ git show "$BASE_COMMIT:index.html" | strip_pwa > "$SYNC_DIR/base.html"
 strip_pwa < "$DST" > "$SYNC_DIR/repo.html"
 
 if ! cmp -s "$SYNC_DIR/base.html" "$SYNC_DIR/repo.html" && ! cmp -s "$SRC" "$SYNC_DIR/repo.html"; then
-  BACKUP="$SRC.bak-$(date +%Y%m%d-%H%M%S)"
-  cp -f "$SRC" "$BACKUP"
-  if cmp -s "$SRC" "$SYNC_DIR/base.html"; then
-    cp -f "$SYNC_DIR/repo.html" "$SRC"
-    echo "OK: GitHub'daki degisiklikler /sdcard dosyasina alindi (yedek: $BACKUP)"
-  elif git merge-file -p -L sdcard -L onceki -L github \
-         "$SRC" "$SYNC_DIR/base.html" "$SYNC_DIR/repo.html" > "$SYNC_DIR/merged.html"; then
-    cp -f "$SYNC_DIR/merged.html" "$SRC"
-    echo "OK: GitHub ve /sdcard degisiklikleri birlestirildi (yedek: $BACKUP)"
-  else
-    CONFLICT="$SRC.cakisma.html"
-    cp -f "$SYNC_DIR/merged.html" "$CONFLICT"
-    echo "HATA: GitHub ve /sdcard ayni satirlari degistirmis — commit edilmedi."
-    echo "  Cakisma dosyasi: $CONFLICT  (<<<<<<< / >>>>>>> isaretli yerleri duzeltin,"
-    echo "  sonra bu dosyayi '$SRC' uzerine kopyalayip publish.sh'i tekrar calistirin)"
-    exit 1
-  fi
+  echo "HATA: GitHub'daki index.html, /sdcard dosyasinda olmayan degisiklikler iceriyor — commit edilmedi."
+  echo "  Devam edersen bu degisiklikler silinir. /sdcard dosyasina yazilmadi."
+  echo "  Once GitHub'daki surumu telefona kendin al, ornek:"
+  echo "    cp \"$DST\" \"$SRC\""
+  echo "  (Telefonda kendi degisikliklerin varsa once onlari yedekle.)"
+  exit 1
 fi
 cmp -s "$SRC" "$SYNC_DIR/repo.html" && git rev-parse HEAD > "$BASE_FILE"
 

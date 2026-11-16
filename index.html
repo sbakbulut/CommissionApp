@@ -1259,6 +1259,74 @@ const baseRates = { silver: 0.005, icon: 0.015, others: 0.01, watches: 0.015 };
 const targetRates = { silver: 0.005, icon: 0.03, others: 0.01, watches: 0.03 };
 const highValueThreshold = 31000;
 const highValueRate = 0.02;
+
+// ════════════════════════════════════════════════════════════════
+// HESAP ÇEKİRDEĞİ — Rust → WebAssembly (kaynak: rust/commission-wasm)
+// Para cent olarak TAM SAYI ile hesaplanır → float kuruş hatası yok
+// (örn. 101 € × %1,5 = 1,52 €; eski float hesabı 1,51 € veriyordu).
+// WASM bu dosyaya gömülüdür; güncellemek için: rust/build-wasm.sh
+// WASM yüklenemezse aynı tam sayı kuralıyla çalışan JS yedeği devreye girer.
+// ════════════════════════════════════════════════════════════════
+const COMMISSION_WASM_B64 = 'AGFzbQEAAAABPgpgAAF/YAN/fn8BfmACfn4BfmACfn4Bf2AEf39+fwF+YAN/fn4AYAF+AX5gAX8AYAR/fn5/AGAFf35+fn4AAxAPAAECAQMEBQYFBwgICQkJBAUBcAEBAQUDAQAQBgkBfwFBgIDAAAsHUgYGbWVtb3J5AgALYXBpX3ZlcnNpb24AABBjb21taXNzaW9uX2NlbnRzAAENY29udmVydF9jZW50cwACB3JhdGVfYnAAAwp0YXJnZXRfbWV0AAQK4BIPBABBAQt8AgF/AX4jgICAgABB4ABrIgMkgICAgABCgICAgICAgICAfyEEAkAgAEEDSw0AIAMQiYCAgAAgA0HQAGogAyAAIAEgAkEARxCFgICAACABEIaAgIAAIAMpA1hCgICAgICAgICAfyADKAJQGyEECyADQeAAaiSAgICAACAEC1ABAn8jgICAgABBEGsiAiSAgICAACACIAEQh4CAgAAgABCIgICAACACKAIAIQMgAikDCCEBIAJBEGokgICAgAAgAUKAgICAgICAgIB/IAMbC1gCAX8BfiOAgICAAEHQAGsiAySAgICAAEKAgICAgICAgIB/IQQCQCAAQQNLDQAgAxCJgICAACADIAAgASACQQBHEIWAgIAAIQQLIANB0ABqJICAgIAAIAQLDQAgAUIAVSAAIAFZcQuoAQACQAJAAkACQAJAAkACQAJAAkAgAUH/AXFBAkYNACADDQMgACEDIAFB/wFxDgQIBgECCAsgAw0DCyAAQRBqIQMMBgsgAEEYaiEDDAULIABBIGohAwJAAkAgAUH/AXEOBAYAAwEGCyAAQShqIQMMBQsgAEE4aiEDDAQLIAIgACkDQFkNAgsgAEEwaiEDDAILIABBCGohAwwBCyAAQcgAaiEDCyADKQMAC6YCAwF/BX4BfyOAgICAAEEwayIDJICAgIAAIANBIGogAiACQj+HIAEgAUI/hxCOgICAAEIAIQQgA0EQaiADKQMgIgEgAykDKCICQpDOAEIAEI2AgIAAIAMgAykDECIFIAMpAxgiBkKQzgBCABCOgICAAAJAAkBCACABIAMpAwAiB30iCH0gCCACIAMpAwh9IAEgB1StfSIHQgBTIgkbQognVEEAQgAgByAIQgBSrXx9IAcgCRtQG0UNACAFIQEMAQsgBiABQgBSIAJCAFUgAlAbIAJCAFNrrCIBQj+HfCAFIAF8IgEgBVStfCEGCwJAIAYgAUKAgICAgICAgIB/fCABVK18QgBSDQAgACABNwMIQgEhBAsgACAENwMAIANBMGokgICAgAALBAAgAAsOACAAIAEgAhCGgICAAAtSACAAQsgBNwNIIABC4Jq9ATcDQCAAQqwCNwM4IABC5AA3AzAgAEKsAjcDKCAAQjI3AyAgAEKWATcDGCAAQuQANwMQIABClgE3AwggAEIyNwMAC04BAX4CQAJAIANBwABxDQAgA0UNASACQQAgA2uthiABIAOtIgSIhCEBIAIgBIghAgwBCyACIAOtiCEBQgAhAgsgACABNwMAIAAgAjcDCAtOAQF+AkACQCADQcAAcQ0AIANFDQEgAiADrSIEhiABQQAgA2utiIQhAiABIASGIQEMAQsgASADrYYhAkIAIQELIAAgATcDACAAIAI3AwgLuggEAX8BfgN/BH4jgICAgABBsAFrIgUkgICAgABCACEGAkACQAJAAkACQAJAAkACQCAEeSADeULAAHwgBEIAUhunIgcgAnkgAXlCwAB8IAJCAFIbpyIITQ0AIAhBP0sNASAHQd8ASw0CIAcgCGtBIEkNAyAFQaABaiADIARB4AAgB2siCRCKgICAACAFNQKgAUIBfCEKQgAhC0IAIQYMBAsgASADVCIIIAIgBFQgAiAEURtFDQVCACEMDAYLIAEgASADgCIMIAN+fSEBQgAhBkIAIQIMBQsgAiACIANC/////w+DIgSAIgYgA359QiCGIAFCIIgiDIQgBIAiAkIghiAMIAIgA359QiCGIAFC/////w+DhCIBIASAIgOEIQwgASADIAR+fSEBIAJCIIggBoQhBkIAIQIMBAsgBUEwaiABIAJBwAAgCGsiCBCKgICAACAFQSBqIAMgBCAIEIqAgIAAQgAhBiAFIANCACAFKQMwIAUpAyCAIgxCABCOgICAACAFQRBqIARCACAMQgAQjoCAgAAgBSkDACEKAkAgBSkDGCAFKQMIIg0gBSkDEHwiCyANVK18QgBSDQAgASAKVCIIIAIgC1QgAiALURtFDQILIAQgAnwgAyABfCIBIANUrXwgC30gASAKVK19IQIgDEJ/fCEMIAEgCn0hAQwDCwJAAkADQCAFQZABaiABIAJBwAAgCGsiCBCKgICAACAFKQOQASEMAkAgCCAJTw0AIAVB0ABqIAMgBCAIEIqAgIAAIAVBwABqIAMgBCAMIAUpA1CAIg1CABCOgICAAAJAIAEgBSkDQCIKVCIIIAIgBSkDSCIMVCACIAxRGw0AIAIgDH0gCK19IQIgASAKfSEBIAYgCyANfCIMIAtUrXwhBgwHCyACIAR8IAEgA3wiBCABVK18IAx9IAQgClStfSECIAQgCn0hASAGIA0gC3xCf3wiDCALVK18IQYMBgsgBUGAAWogDCAKgCIMQgAgCCAJayIIEIuAgIAAIAVB8ABqIAMgBCAMQgAQjoCAgAAgBUHgAGogBSkDcCAFKQN4IAgQi4CAgAAgBSkDiAEgBnwgBSkDgAEiBiALfCILIAZUrXwhBgJAIAcgAiAFKQNofSABIAUpA2AiDFStfSICeSABIAx9IgF5QsAAfCACQgBSG6ciCE0NACAIQT9LDQIMAQsLIAEgA1QiCCACIARUIAIgBFEbRQ0BIAshDAwECyABIAEgA4AiAiADfn0hASAGIAsgAnwiDCALVK18IQZCACECDAMLIAIgBH0gCK19IQIgASADfSEBIAYgC0IBfCIMUK18IQYMAgsgAiALfSAIrX0hAiABIAp9IQFCACEGDAELIAIgBH0gCK19IQIgASADfSEBQgEhDAsgACABNwMQIAAgDDcDACAAIAI3AxggACAGNwMIIAVBsAFqJICAgIAAC6EBAQJ/I4CAgIAAQSBrIgUkgICAgAAgBUIAIAF9IAEgAkIAUyIGG0IAIAIgAUIAUq18fSACIAYbQgAgA30gAyAEQgBTIgYbQgAgBCADQgBSrXx9IAQgBhsQjICAgAAgBSkDCCEDIABCACAFKQMAIgF9IAEgBCAChUIAUyIGGzcDACAAQgAgAyABQgBSrXx9IAMgBhs3AwggBUEgaiSAgICAAAtuAQZ+IAAgA0L/////D4MiBSABQv////8PgyIGfiIHIANCIIgiCCAGfiIGIAUgAUIgiCIJfnwiBUIghnwiCjcDACAAIAggCX4gBSAGVK1CIIYgBUIgiIR8IAogB1StfCAEIAF+IAMgAn58fDcDCAs='; // @generated rust/build-wasm.sh
+const CommissionCore = (() => {
+  const CAT_INDEX = { silver: 0, icon: 1, others: 2, watches: 3 }; // = CATS sırası
+  const CAT_NAMES = Object.keys(CAT_INDEX);
+  const ERROR = -(2n ** 63n);                                         // = i64::MIN
+  const cents = v => BigInt(Math.round((+v || 0) * 100));
+  const tenThousandths = r => BigInt(Math.round((+r || 0) * 10000)); // oran (bp) ve kur
+  // amount × rate / 10000, yarım yukarı (sıfırdan uzağa) — Rust Rate::checked_apply ile aynı
+  const applyRate = (amount, rate) => {
+    const p = amount * rate, q = p / 10000n, rem = p % 10000n;
+    return (rem < 0n ? -rem : rem) * 2n >= 10000n ? q + (p < 0n ? -1n : 1n) : q;
+  };
+  // JS yedeği: WASM ile aynı arayüz (BigInt girer/çıkar). tools/check-wasm.mjs ikisini karşılaştırır.
+  const jsCore = {
+    api_version: () => 1,
+    rate_bp(cat, amount, met) {
+      const c = CAT_NAMES[cat]; if (!c) return ERROR;
+      if (c === 'others' && met && amount >= cents(highValueThreshold)) return tenThousandths(highValueRate);
+      return tenThousandths((met ? targetRates : baseRates)[c]);
+    },
+    commission_cents(cat, amount, met) {
+      const r = jsCore.rate_bp(cat, amount, met);
+      return r === ERROR ? ERROR : applyRate(amount, r);
+    },
+    target_met: (total, target) => (target > 0n && total >= target ? 1 : 0),
+    convert_cents: (amount, fx) => applyRate(amount, fx),
+  };
+  let impl = jsCore, engine = 'js';
+  try {
+    if (COMMISSION_WASM_B64 && typeof WebAssembly === 'object') {
+      const bytes = Uint8Array.from(atob(COMMISSION_WASM_B64), ch => ch.charCodeAt(0));
+      const wasm = new WebAssembly.Instance(new WebAssembly.Module(bytes), {}).exports;
+      if (wasm.api_version() !== 1) throw new Error('unexpected API version ' + wasm.api_version());
+      // Oranlar iki yerde durur (Rust Rules::default() + yukarıdaki JS sabitleri).
+      // Biri değişip diğeri değişmediyse WASM kullanılmaz → JS sabitleri geçerli olur.
+      const hv = cents(highValueThreshold);
+      for (let c = 0; c < 4; c++) for (const met of [0, 1]) for (const a of [hv - 1n, hv]) {
+        if (wasm.rate_bp(c, a, met) !== jsCore.rate_bp(c, a, met)) {
+          throw new Error(`rates differ (category ${c}) — run rust/build-wasm.sh after changing Rules::default()`);
+        }
+      }
+      impl = wasm; engine = 'rust-wasm';
+    }
+  } catch (e) {
+    console.warn('[CommissionCore] WASM could not load, using JS fallback:', e);
+  }
+  const ok = v => { if (v === ERROR) throw new Error('CommissionCore: invalid input'); return v; };
+  const idx = c => { const i = CAT_INDEX[c]; if (i === undefined) throw new Error('Unknown category: ' + c); return i; };
+  return {
+    engine, jsCore,
+    label: engine === 'rust-wasm' ? 'Rust/WASM' : 'JS',
+    // Tüm dönüşler € cinsinden, 2 ondalık ile TAM (cent) değerlerdir.
+    rate: (cat, value, met) => Number(ok(impl.rate_bp(idx(cat), cents(value), met ? 1 : 0))) / 10000,
+    commission: (cat, value, met) => Number(ok(impl.commission_cents(idx(cat), cents(value), met ? 1 : 0))) / 100,
+    convert: (value, fx) => Number(ok(impl.convert_cents(cents(value), tenThousandths(fx)))) / 100,
+    targetMet: (total, target) => impl.target_met(cents(total), cents(target)) === 1,
+    sum: values => Number(values.reduce((a, v) => a + cents(v), 0n)) / 100,
+  };
+})();
+console.info('[CommissionCore] engine:', CommissionCore.engine);
 let targetAmount = 0;
 let salespersonName = '';
 const labels = { silver: 'Silver', icon: 'Icon', others: 'Others', watches: 'Watches' };
@@ -1356,10 +1424,10 @@ function saveSettings() {
   } catch (e) {}
 }
 function getTotalSales() {
-  return CATS.reduce((a, c) => a + rows[c].reduce((s, row) => s + (row.value || 0), 0), 0);
+  return CommissionCore.sum(CATS.flatMap(c => rows[c].map(row => row.value || 0)));
 }
 function recomputeTarget() {
-  targetAchieved = targetAmount > 0 && getTotalSales() >= targetAmount;
+  targetAchieved = CommissionCore.targetMet(getTotalSales(), targetAmount);
 }
 function getCollapsedState() { try { const r = localStorage.getItem(COLLAPSE_KEY); return r ? JSON.parse(r) : {}; } catch { return {}; } }
 function setCollapsedState(cat, collapsed) { try { const s = getCollapsedState(); s[cat] = !!collapsed; localStorage.setItem(COLLAPSE_KEY, JSON.stringify(s)); } catch {} }
@@ -1367,8 +1435,11 @@ function setCollapsedState(cat, collapsed) { try { const s = getCollapsedState()
 const $ = id => document.getElementById(id);
 function getRates() { return targetAchieved ? targetRates : baseRates; }
 function getRateForRow(cat, value) {
-  if (cat === 'others' && targetAchieved && value >= highValueThreshold) return highValueRate;
-  return getRates()[cat];
+  return CommissionCore.rate(cat, value, targetAchieved);
+}
+// Bir satırın komisyonu (€, cent'e yarım yukarı yuvarlanmış) — Rust/WASM
+function commissionFor(cat, value, achieved = targetAchieved) {
+  return CommissionCore.commission(cat, value, achieved);
 }
 function formatEUR(n) { return '€' + n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -1383,7 +1454,7 @@ function buildCategories() {
   CATS.forEach(cat => {
     const r = getRates()[cat];
     const sum = rows[cat].reduce((a, b) => a + (b.value || 0), 0);
-    const prim = rows[cat].reduce((a, b) => a + (b.value || 0) * getRateForRow(cat, b.value || 0), 0);
+    const prim = rows[cat].reduce((a, b) => a + commissionFor(cat, b.value || 0), 0);
     const isCollapsed = !!collapsedState[cat];
     const block = document.createElement('div');
     block.className = `cat-block ${cat}` + (targetAchieved ? ' toggled' : '') + (isCollapsed ? ' collapsed' : '');
@@ -1407,7 +1478,7 @@ function buildCategories() {
                 <div class="day-name">${getDayName(dateVal)}</div>
               </div>
               <input type="number" min="0" step="0.01" inputmode="decimal" value="${row.value || ''}" placeholder="0" />
-              <div class="row-prim">${formatEUR((row.value || 0) * r)}</div>
+              <div class="row-prim">${formatEUR(commissionFor(cat, row.value || 0))}</div>
               <button class="del">✕</button>
             </div>`;
           }).join('')}
@@ -1491,7 +1562,7 @@ function update() {
   let total = 0; const sums = {}; const prims = {};
   CATS.forEach(cat => {
     sums[cat] = 0; prims[cat] = 0;
-    rows[cat].forEach(row => { const v = row.value || 0; sums[cat] += v; prims[cat] += v * getRateForRow(cat, v); });
+    rows[cat].forEach(row => { const v = row.value || 0; sums[cat] += v; prims[cat] += commissionFor(cat, v); });
     total += prims[cat];
   });
   $('bSilver').textContent = 'Silver: ' + formatEUR(prims.silver);
@@ -1504,7 +1575,7 @@ function update() {
     const id = parseInt(item.dataset.rowid);
     const row = rows[cat].find(r => r.id === id);
     const primEl = item.querySelector('.row-prim');
-    if (row && primEl) primEl.textContent = formatEUR((row.value || 0) * getRateForRow(cat, row.value || 0));
+    if (row && primEl) primEl.textContent = formatEUR(commissionFor(cat, row.value || 0));
   });
   document.querySelectorAll('.cat-block').forEach(block => {
     let realCat = null;
@@ -1516,7 +1587,7 @@ function update() {
     block.querySelector('.cat-stats .prim').textContent = 'Commission: ' + formatEUR(prims[realCat]);
     block.querySelector('.cat-title p').textContent = `Rate: %${(r[realCat] * 100).toFixed(2)} • ${rows[realCat].length} row${rows[realCat].length === 1 ? '' : 's'}`;
   });
-  $('footerNote').textContent = `When target is met, Icon & Watches rates change (${(baseRates.icon*100).toFixed(2)}% → ${(targetRates.icon*100).toFixed(2)}%). Others rule: rows ≥ €${highValueThreshold.toLocaleString('de-DE')} also change (${(baseRates.others*100).toFixed(2)}% → ${(highValueRate*100).toFixed(2)}%).`;
+  $('footerNote').textContent = `When target is met, Icon & Watches rates change (${(baseRates.icon*100).toFixed(2)}% → ${(targetRates.icon*100).toFixed(2)}%). Others rule: rows ≥ €${highValueThreshold.toLocaleString('de-DE')} also change (${(baseRates.others*100).toFixed(2)}% → ${(highValueRate*100).toFixed(2)}%). Calc engine: ${CommissionCore.label}.`;
 }
 function renderSettingsInputs() {
   $('targetAmountInput').value = targetAmount || '';
@@ -1544,7 +1615,7 @@ function flattenRows() {
     rows[cat].forEach((row, idx) => {
       if (!row.value || row.value <= 0) return;
       const rate = getRateForRow(cat, row.value);
-      all.push({ date: row.date || todayISO(), category: labels[cat], emoji: emojis[cat], index: idx + 1, amount: row.value, rate, prim: row.value * rate, day: getDayName(row.date || todayISO()), desc: row.desc || '', sku: row.sku || '' });
+      all.push({ date: row.date || todayISO(), category: labels[cat], emoji: emojis[cat], index: idx + 1, amount: row.value, rate, prim: commissionFor(cat, row.value), day: getDayName(row.date || todayISO()), desc: row.desc || '', sku: row.sku || '' });
     });
   });
   all.sort((a, b) => a.date.localeCompare(b.date));
@@ -1555,7 +1626,7 @@ function buildExcelData() {
   const r = getRates();
   const data = [];
   const sums = {}; const prims = {};
-  CATS.forEach(c => { sums[c] = 0; prims[c] = 0; rows[c].forEach(row => { const v = row.value || 0; sums[c] += v; prims[c] += v * getRateForRow(c, v); }); });
+  CATS.forEach(c => { sums[c] = 0; prims[c] = 0; rows[c].forEach(row => { const v = row.value || 0; sums[c] += v; prims[c] += commissionFor(c, v); }); });
   const totalSales = CATS.reduce((a, c) => a + sums[c], 0);
   const total = CATS.reduce((a, c) => a + prims[c], 0);
   const flat = flattenRows();
@@ -1565,9 +1636,9 @@ function buildExcelData() {
   let tSales = 0, tPrim = 0;
   if (fx) flat.forEach(x => {
     const k = fxFor(x.date);
-    tSales += x.amount * k; tPrim += x.prim * k;
+    tSales += fxConvert(x.amount, k); tPrim += fxConvert(x.prim, k);
     const cat = CATS.find(c => labels[c] === x.category);
-    if (cat) { tCat[cat].s += x.amount * k; tCat[cat].p += x.prim * k; }
+    if (cat) { tCat[cat].s += fxConvert(x.amount, k); tCat[cat].p += fxConvert(x.prim, k); }
   });
 
   data.push(['COMMISSION CALCULATOR — SALES REPORT']); data.push([]);
@@ -1601,11 +1672,11 @@ function buildExcelData() {
     ? ['Date', 'Day', 'Sales Count', 'Total Sales (€)', 'Total Commission (€)', 'EUR/TRY', 'Total Sales (₺)', 'Total Commission (₺)']
     : ['Date', 'Day', 'Sales Count', 'Total Sales (€)', 'Total Commission (€)']);
   const byDate = {};
-  flat.forEach(x => { if (!byDate[x.date]) byDate[x.date] = { count: 0, sum: 0, prim: 0 }; byDate[x.date].count++; byDate[x.date].sum += x.amount; byDate[x.date].prim += x.prim; });
+  flat.forEach(x => { if (!byDate[x.date]) byDate[x.date] = { count: 0, sum: 0, prim: 0 }; byDate[x.date].count++; byDate[x.date].sum += x.amount; byDate[x.date].prim += x.prim; addTryToDay(byDate[x.date], x); });
   Object.keys(byDate).sort().forEach(d => {
     const b = byDate[d];
     const row = [formatDate(d), getDayName(d), b.count, n2(b.sum), n2(b.prim)];
-    if (fx) { const k = fxFor(d); row.push(+k.toFixed(4), n2(b.sum * k), n2(b.prim * k)); }
+    if (fx) { const k = fxFor(d); row.push(+k.toFixed(4), n2(b.ts || 0), n2(b.tp || 0)); }
     data.push(row);
   });
 
@@ -1615,7 +1686,7 @@ function buildExcelData() {
     : ['#', 'Date', 'Day', 'SKU', 'Product Description', 'Category', 'Amount (€)', 'Rate (%)', 'Commission (€)']);
   flat.forEach((x, i) => {
     const row = [i + 1, formatDate(x.date), x.day, x.sku || '—', x.desc || '—', x.category, n2(x.amount), n2(x.rate * 100), n2(x.prim)];
-    if (fx) { const k = fxFor(x.date); row.push(+k.toFixed(4), n2(x.amount * k), n2(x.prim * k)); }
+    if (fx) { const k = fxFor(x.date); row.push(+k.toFixed(4), n2(fxConvert(x.amount, k)), n2(fxConvert(x.prim, k))); }
     data.push(row);
   });
   if (flat.length === 0) data.push(['— No sales entered yet —']);
@@ -2067,18 +2138,17 @@ function teamStatus(type, text) {
 }
 
 function rateFor(cat, value, achieved) {
-  if (cat === 'others' && achieved && value >= highValueThreshold) return highValueRate;
-  return (achieved ? targetRates : baseRates)[cat];
+  return CommissionCore.rate(cat, value, achieved);
 }
 
 function computePersonStats(items, target) {
-  const totalSales = items.reduce((a, it) => a + (it.amount || 0), 0);
-  const achieved = target > 0 && totalSales >= target;
+  const totalSales = CommissionCore.sum(items.map(it => it.amount || 0));
+  const achieved = CommissionCore.targetMet(totalSales, target);
   const sums = {}, prims = {};
   CATS.forEach(c => { sums[c] = 0; prims[c] = 0; });
   const flat = items.map(it => {
     const rate = rateFor(it.category, it.amount, achieved);
-    const prim = it.amount * rate;
+    const prim = commissionFor(it.category, it.amount, achieved);
     sums[it.category] += it.amount;
     prims[it.category] += prim;
     return { ...it, rate, prim, day: getDayName(it.date) };
@@ -2258,6 +2328,13 @@ function fxRateSummaryShort() {
 }
 
 function n2(v) { return +(+v).toFixed(2); }
+// EUR → TRY, cent'e yarım yukarı yuvarlanmış (Rust/WASM)
+function fxConvert(value, k) { return CommissionCore.convert(value, k); }
+function addTryToDay(b, x) {
+  const k = fxFor(x.date);
+  b.ts = (b.ts || 0) + fxConvert(x.amount, k);
+  b.tp = (b.tp || 0) + fxConvert(x.prim, k);
+}
 
 // TCMB has no public JSON/CORS API, so we go through a CORS proxy and
 // parse the daily XML archive it publishes at kurlar/YYYYMM/DDMMYYYY.xml
@@ -2402,8 +2479,8 @@ function tryTotals(st) {
   let sales = 0, prim = 0;
   st.flat.forEach(x => {
     const r = fxFor(x.date);
-    sales += x.amount * r; prim += x.prim * r;
-    perCat[x.category].s += x.amount * r; perCat[x.category].p += x.prim * r;
+    sales += fxConvert(x.amount, r); prim += fxConvert(x.prim, r);
+    perCat[x.category].s += fxConvert(x.amount, r); perCat[x.category].p += fxConvert(x.prim, r);
   });
   return { sales, prim, perCat };
 }
@@ -2449,12 +2526,12 @@ function buildPersonSheetData(person, target) {
   const byDate = {};
   st.flat.forEach(x => {
     if (!byDate[x.date]) byDate[x.date] = { count: 0, sum: 0, prim: 0 };
-    byDate[x.date].count++; byDate[x.date].sum += x.amount; byDate[x.date].prim += x.prim;
+    byDate[x.date].count++; byDate[x.date].sum += x.amount; byDate[x.date].prim += x.prim; addTryToDay(byDate[x.date], x);
   });
   Object.keys(byDate).sort().forEach(d => {
     const b = byDate[d];
     const row = [formatDate(d), getDayName(d), b.count, n2(b.sum), n2(b.prim)];
-    if (fx) { const k = fxFor(d); row.push(+k.toFixed(4), n2(b.sum * k), n2(b.prim * k)); }
+    if (fx) { const k = fxFor(d); row.push(+k.toFixed(4), n2(b.ts || 0), n2(b.tp || 0)); }
     data.push(row);
   });
 
@@ -2465,7 +2542,7 @@ function buildPersonSheetData(person, target) {
   st.flat.forEach((x, i) => {
     const row = [i + 1, formatDate(x.date), x.day, person.name, x.sku || '—', x.desc || '—',
       labels[x.category], n2(x.amount), n2(x.rate * 100), n2(x.prim)];
-    if (fx) { const k = fxFor(x.date); row.push(+k.toFixed(4), n2(x.amount * k), n2(x.prim * k)); }
+    if (fx) { const k = fxFor(x.date); row.push(+k.toFixed(4), n2(fxConvert(x.amount, k)), n2(fxConvert(x.prim, k))); }
     data.push(row);
   });
   return data;
@@ -2521,7 +2598,7 @@ function buildAllSalesData() {
   all.forEach((x, i) => {
     const row = [i + 1, x.person, formatDate(x.date), x.day, x.sku || '—', x.desc || '—',
       labels[x.category], n2(x.amount), n2(x.rate * 100), n2(x.prim)];
-    if (fx) { const k = fxFor(x.date); tS += x.amount * k; tP += x.prim * k; row.push(+k.toFixed(4), n2(x.amount * k), n2(x.prim * k)); }
+    if (fx) { const k = fxFor(x.date); tS += fxConvert(x.amount, k); tP += fxConvert(x.prim, k); row.push(+k.toFixed(4), n2(fxConvert(x.amount, k)), n2(fxConvert(x.prim, k))); }
     data.push(row);
   });
   const totRow = ['TOTAL', '', '', '', '', '', '',

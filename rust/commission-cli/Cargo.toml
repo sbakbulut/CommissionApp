@@ -1,0 +1,14 @@
+[package]
+name = "commission-cli"
+description = "CSV ve Excel raporlarını okuyan komisyon hesap / denetim aracı"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "commission"
+path = "src/main.rs"
+
+[dependencies]
+calamine = "0.38.0"
+commission-core = { path = "../commission-core" }

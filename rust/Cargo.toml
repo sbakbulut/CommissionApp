@@ -1,0 +1,16 @@
+[workspace]
+resolver = "3"
+members = ["commission-core", "commission-wasm", "commission-cli"]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+publish = false
+
+# WASM dosyası küçük olsun diye (index.html içine gömülür).
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
