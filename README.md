@@ -102,6 +102,10 @@ raporda geçen **en son satış ayının (rapor ayı)** TCMB döviz satış kuru
 ./publish.sh --no-push "deneme"   # sadece commit, push yok
 ```
 
+`publish.sh` telefondaki `/sdcard` dosyasına **hiç yazmaz**. GitHub'daki `index.html` telefonda
+olmayan değişiklikler içeriyorsa (ör. birleştirilmiş bir PR) betik durur ve uyarır. O zaman
+GitHub'daki sürümü telefona kendin kopyala, sonra betiği tekrar çalıştır.
+
 `publish.sh` kopyalamadan sonra:
 
 1. `pwa/head.html` ve `pwa/body-end.html` bloklarını `index.html`'e **idempotent** olarak enjekte eder
