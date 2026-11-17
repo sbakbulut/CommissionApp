@@ -5,13 +5,15 @@
 
    Strateji:
    - Gezinme (HTML) istekleri : network-first → ağ yoksa önbellekteki kabuk
+   - Rust/WASM uygulaması (pkg/): network-first → ağ yoksa önbellek. .js ve .wasm her zaman
+                                aynı sürümden gelir (yeni yayın internet varken hemen görünür).
    - Aynı kaynak statikler    : cache-first + arka planda tazeleme (stale-while-revalidate)
-   - SheetJS (jsdelivr) CDN   : cache-first (çevrimdışı Excel dışa aktarma için; URL sürümlü)
+   - CDN (eski sürümler)      : cache-first
    - Diğer çapraz kaynak      : karışmayız (tarayıcı normal davranır)
 */
 'use strict';
 
-const VERSION = 'v13.8';
+const VERSION = 'v14.0';
 const SHELL = `commission-shell-${VERSION}`;
 const RUNTIME = `commission-runtime-${VERSION}`;
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'unpkg.com'];
@@ -20,6 +22,8 @@ const CDN_HOSTS = ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'unpkg.com'];
 const SHELL_ASSETS = [
   './',
   './index.html',
+  './pkg/commission_app.js',
+  './pkg/commission_app_bg.wasm',
   './manifest.json',
   './favicon.svg',
   './icons/icon-192.png',
@@ -104,6 +108,10 @@ self.addEventListener('fetch', (event) => {
       return;
     }
     if (url.pathname.endsWith('/sw.js')) return;              // SW kendini önbelleğe almasın
+    if (url.pathname.includes('/pkg/')) {                     // Rust/WASM: .js + .wasm aynı sürüm
+      event.respondWith(networkFirst(request, request.url));
+      return;
+    }
     event.respondWith(staleWhileRevalidate(request, SHELL));
     return;
   }
