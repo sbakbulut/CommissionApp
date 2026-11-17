@@ -1,71 +1,53 @@
-# Rust hesap çekirdeği
+# Rust kodu
 
-Uygulamanın komisyon hesabı Rust ile yazılmıştır. Rust kodu WebAssembly'e (WASM)
-derlenir ve `index.html` içine gömülür. Tarayıcıdaki hesap bu kodla yapılır.
-
-## Neden?
-
-Eski hesap JavaScript `number` (float) kullanıyordu. Bazı satırlar 1 cent eksik çıkıyordu:
-
-| Satış | Oran | Eski (float) | Yeni (Rust) |
-|---|---|---|---|
-| 101 € | %1,5 | 1,51 € | **1,52 €** |
-| 117 € | %0,5 | 0,58 € | **0,59 €** |
-| 250,50 € | %1 | 2,50 € | **2,51 €** |
-
-Rust kodu parayı **cent olarak tam sayı** (`i64`) tutar. Yuvarlama: yarım yukarı.
+CommissionApp'in tamamı Rust ile yazılmıştır. Tarayıcıda WebAssembly olarak çalışır.
 
 ## Paketler
 
-| Paket | Görev | Dış bağımlılık |
+| Paket | Görev |
+|---|---|
+| `commission-core` | `Money` (cent), `Rate` (baz puan), `FxRate`, komisyon kuralları. Dış bağımlılık yok. |
+| `commission-app` | Web uygulaması. Saf modüller `cargo test` ile test edilir; `ui` modülü yalnız WebAssembly'de derlenir. |
+| `commission-cli` | `commission` komutu: CSV hesabı + uygulamanın Excel raporunu yeniden hesaplayıp denetleme. |
+
+`commission-app` modülleri:
+
+| Modül | İçerik | Eski JS karşılığı |
 |---|---|---|
-| `commission-core` | `Money`, `Rate`, `FxRate`, kurallar, `calculate()` | Yok |
-| `commission-wasm` | Tarayıcı arayüzü (yalnız tam sayılar, 2,6 KB) | Yok |
-| `commission-cli` | `commission` komutu: CSV hesabı + Excel rapor denetimi | `calamine` |
+| `tiffany.rs` | Ürün kodu → koleksiyon, materyal, kategori | `parseTiffanyCode`, `inferCategory` |
+| `tables.rs` | SKU ve kısaltma tabloları (index.html v13.8'den otomatik üretildi) | `SKU_TO_COLLECTION` vb. |
+| `import.rs` | Excel / HTML ".xls" okuma, başlık ve sütun bulma, tutar ve tarih okuma | `importExcelLocal`, `findHeaderRow`, … |
+| `calc.rs` | Oran, komisyon, hedef, TL çevirisi | `CommissionCore` |
+| `report.rs` | Excel rapor içerikleri (4 tür) | `buildExcelData`, `buildPersonSheetData`, … |
+| `xlsx.rs` | .xlsx yazma (`rust_xlsxwriter`) | SheetJS `writeFile` |
+| `fx.rs` | TCMB kur günü, etiketler, XML okuma | `fxTargetForMonth`, `parseTcmbXml`, … |
+| `state.rs` | `localStorage` kaydı (eski biçimle aynı) | `loadState`, `saveState`, … |
+| `js.rs` | JavaScript sayı/tarih/metin kurallarının birebir kopyası | `toFixed`, `toLocaleString`, `parseFloat`, `Date` |
+| `ui.rs` | Ekran ve olaylar (`web-sys`) | ekran kodu |
 
 ## Komutlar
 
 ```sh
-# Bir kez: WASM hedefini kur
-rustup target add wasm32-unknown-unknown
-
 cd rust
-cargo test                       # tüm Rust testleri
-./build-wasm.sh                  # WASM derle ve index.html içine göm
-node ../tools/check-wasm.mjs     # WASM = JS yedeği = referans (48 milyon hesap)
-
-# Hesap (CSV)
-cargo run -p commission-cli -- commission-cli/examples/sales.csv --target 30000
-
-# Denetim: uygulamanın ürettiği Excel raporunu yeniden hesapla
-cargo run -p commission-cli -- ~/Downloads/rapor.xlsx
+cargo test --workspace                 # birim testleri
+./build-web.sh                         # WebAssembly → ../pkg/
+node ../tools/check-parity.mjs         # eski JS ile Rust aynı mı (200.000+ girdi)
+node ../tools/check-e2e.cjs            # eski ve yeni uygulama tarayıcıda yan yana
+cargo run -p commission-cli -- ~/Downloads/rapor.xlsx   # Excel raporunu denetle
 ```
 
-## Kural değişikliği yaparken
+## Kural değişikliği
 
-Oranlar **iki yerde** durur:
+Oranlar yalnız bir yerdedir: `commission-core/src/lib.rs` → `Rules::default()`.
+Ekrandaki oran tablosu `index.html` içinde sabit metindir; oran değişirse onu da güncelle.
+Sonra `./build-web.sh` çalıştır.
 
-1. `commission-core/src/lib.rs` → `Rules::default()` (Rust, asıl hesap)
-2. `index.html` → `baseRates`, `targetRates`, `highValueThreshold`, `highValueRate`
-   (ekran metinleri ve WASM yüklenemezse kullanılan JS yedeği)
+## Neden JS kurallarının kopyası (`js.rs`)?
 
-Adımlar:
+Eski uygulama ile **aynı** sonucu vermek için. Örnekler:
 
-1. İki yeri de değiştir.
-2. `./build-wasm.sh` çalıştır.
-3. `node ../tools/check-wasm.mjs` çalıştır. İki yer farklıysa bu kontrol hata verir.
+- Ekranda `€1,01` (JS `toLocaleString`, 1.005'i yukarı yuvarlar) ama Excel'de `1` (JS `toFixed`).
+- `31.02.2026` tarihi JS'te hata değildir: `03.03.2026` olur.
+- `"12abc"` tutarı JS'te `12` olur.
 
-Güvenlik: Sayfa açılırken Rust oranlarını JS oranları ile karşılaştırır. Farklıysa
-WASM kullanılmaz ve JS yedeği çalışır (o da tam sayı ile hesaplar). Böylece yalnız
-`index.html` içinde oran değiştirilirse yeni oran yine de geçerli olur.
-Konsolda `WASM could not load ... rates differ` uyarısı görünür.
-
-## Denetim çıktısı örneği (eski uygulamanın raporu)
-
-```
-  24  Silver          €117,00   0.50%        €0,59         €0,58 ✗
-  27  Icon            €101,00   1.50%        €1,52         €1,51 ✗
-  29  Icon          €1.001,50   1.50%       €15,02               ✓
-  ...
-Denetim: 12 satırdan 7 tanesi farklı. Toplam fark (Rust − uygulama): €0,07
-```
+`tools/check-parity.mjs` ve `tools/check-e2e.cjs` bu kuralların eski uygulamayla aynı olduğunu kanıtlar.

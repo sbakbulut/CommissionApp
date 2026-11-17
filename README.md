@@ -1,8 +1,9 @@
 # CommissionApp — Satış Komisyon Hesaplayıcı
 
-Tek dosyalık satış komisyon hesaplayıcı. **Canlı (GitHub Pages):** https://sbakbulut.github.io/CommissionApp/
+Satış komisyon hesaplayıcı. **Canlı (GitHub Pages):** https://sbakbulut.github.io/CommissionApp/
 
-Kurulum gerekmez — `index.html` dosyasını tarayıcıda aç (veya yukarıdaki canlı adresi kullan), verilerini gir, Excel olarak dışa aktar.
+Kurulum gerekmez — canlı adresi aç, verilerini gir, Excel olarak dışa aktar.
+Uygulamanın tamamı **Rust** ile yazılmıştır ve tarayıcıda WebAssembly olarak çalışır (`v14.0`'dan itibaren).
 Veriler tarayıcının `localStorage`'ında tutulur; hiçbir sunucuya gönderilmez.
 
 Telefona **gerçek uygulama (PWA)** olarak kurulabilir: bkz. [Telefona uygulama olarak kurma](#telefona-uygulama-olarak-kurma-pwa).
@@ -96,47 +97,55 @@ raporda geçen **en son satış ayının (rapor ayı)** TCMB döviz satış kuru
 ## Kullanım (geliştirme / yayın)
 
 ```bash
-# Yerel dosyayı düzenledikten sonra repoyu güncelle:
-./publish.sh                      # /sdcard'daki dosyayı index.html'e kopyalar, PWA bloklarını enjekte eder, commit'ler, push eder
+./publish.sh                      # Rust testleri + WebAssembly derleme + PWA denetimi, sonra commit + push
 ./publish.sh "özel commit mesajı"
 ./publish.sh --no-push "deneme"   # sadece commit, push yok
 ```
 
-`publish.sh` telefondaki `/sdcard` dosyasına **hiç yazmaz**. GitHub'daki `index.html` telefonda
-olmayan değişiklikler içeriyorsa (ör. birleştirilmiş bir PR) betik durur ve uyarır. O zaman
-GitHub'daki sürümü telefona kendin kopyala, sonra betiği tekrar çalıştır.
+Telefondaki `/sdcard/.../commission calculator.html` dosyası **artık kullanılmaz**. Kod `rust/` klasöründedir.
 
-`publish.sh` kopyalamadan sonra:
-
-1. `pwa/head.html` ve `pwa/body-end.html` bloklarını `index.html`'e **idempotent** olarak enjekte eder
-   (işaret: `PWA:HEAD:START` / `PWA:BODY:START`) — böylece telefondaki kaynak dosya PWA etiketlerini ezse bile
-   kurulabilirlik korunur,
-2. gömülü JS'i `node --check` ile sözdizimi denetiminden geçirir (bozuksa commit etmez).
-
-Yayın öncesi kurulabilirlik denetimi:
+Bir kez kurulacaklar:
 
 ```bash
-node tools/check-pwa.mjs          # 57 kontrol: manifest, ikonlar, meta etiketler, sw.js, blok senkronizasyonu
-node tools/check-fx.mjs           # TRY kur çevrimi: rapor ayı + son iş günü + TEK kur (ay/gün bazlı kur olmadığı)
-node tools/check-wasm.mjs         # Rust/WASM hesap çekirdeği: WASM = JS yedeği = referans (48 milyon hesap)
-python3 tools/make-icons.py       # ikonları yeniden üretir ve denetler (opsiyonel)
-python3 -m http.server 8080       # yerel test: http://localhost:8080
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.130
 ```
 
-## Hesap çekirdeği (Rust → WebAssembly)
+Denetimler:
 
-Komisyon ve TL hesabı Rust ile yazılmıştır (`rust/`). Rust kodu 2,6 KB'lık bir WASM dosyasına
-derlenir ve `index.html` içine gömülür. Para **cent olarak tam sayı** ile hesaplanır, bu yüzden
-float kuruş hatası olmaz (örn. 101 € × %1,5 = **1,52 €**; eski hesap 1,51 € veriyordu).
+```bash
+cargo test --manifest-path rust/Cargo.toml --workspace   # Rust birim testleri
+node tools/check-parity.mjs       # eski JS ile Rust: ürün kodu, tutar, tarih, başlık, HTML (200.000+ girdi)
+node tools/check-e2e.cjs          # eski ve yeni uygulama tarayıcıda yan yana (27 adım; playwright + xlsx gerekir)
+node tools/check-pwa.mjs          # manifest, ikonlar, meta etiketler, sw.js, blok senkronizasyonu
+python3 -m http.server 8080       # yerel test: http://localhost:8080  (file:// ile açılmaz — WebAssembly modülü)
+```
 
-- Kuralları değiştirirsen: `rust/build-wasm.sh` çalıştır, sonra `node tools/check-wasm.mjs`.
-- JS oranları Rust ile uyuşmazsa sayfa WASM'ı kullanmaz, JS yedeğine geçer (o da tam sayı ile hesaplar).
-- Alt bilgide `Calc engine: Rust/WASM` yazısı hangi motorun çalıştığını gösterir.
-- `cargo run -p commission-cli -- rapor.xlsx` uygulamanın Excel raporunu yeniden hesaplar ve denetler.
+## Yapı (Rust → WebAssembly)
+
+| Yer | İçerik |
+|---|---|
+| `index.html` | Ekran (HTML + CSS) — v13.8 ile aynı görünüm. JS kodu yok, yalnız WebAssembly'i başlatan satır. |
+| `rust/commission-app/` | Uygulamanın tamamı: ekran, ürün kodu → kategori, Excel okuma/yazma, TCMB kuru, takım raporu, kayıt |
+| `rust/commission-core/` | Para (`Money`, cent) ve komisyon kuralları |
+| `rust/commission-cli/` | Komut satırı: CSV hesabı ve Excel rapor denetimi |
+| `pkg/` | Derlenmiş uygulama (`rust/build-web.sh` üretir, commit edilir) |
+| `sw.js`, `pwa/` | Çevrimdışı çalışma ve telefona kurulum (tarayıcı kuralı gereği JavaScript) |
+
+- Para **cent olarak tam sayı** ile hesaplanır (101 € × %1,5 = **1,52 €**).
+- Kayıtlı veriler (`localStorage`) eski sürümle **aynı biçimdedir**; güncellemede satışlar kaybolmaz.
+- Excel kütüphanesi (SheetJS) artık indirilmez; Excel okuma/yazma Rust içindedir. İlk açılıştan sonra
+  uygulama **tamamen çevrimdışı** çalışır (TCMB kuru hariç).
+- Kalan JavaScript: WebAssembly yükleyicisi (otomatik üretilir), `sw.js` ve kurulum düğmesi — tarayıcılar
+  bunları JavaScript olarak ister.
 
 Ayrıntılar: [`rust/README.md`](rust/README.md)
 
 ## Sürüm
+
+- `v14.0` — **Uygulamanın tamamı Rust** (WebAssembly). Görünüm, hesaplar ve Excel dosyaları v13.8 ile aynı
+  (`tools/check-e2e.cjs` ile doğrulandı). Düzeltmeler: satıcı sütunu olmayan Excel dosyası artık içe
+  aktarılıyor; atlanan satırlar listesi görünüyor; Excel başlık renkleri uygulanıyor. SheetJS kaldırıldı.
 
 - `v13.8` — **TRY çevrimi TEK kur**: rapor ayının (dosyadaki en son satış ayı) son iş günü TCMB kuru
   tüm satırlara uygulanır; ay bazlı/gün bazlı kur kaldırıldı, `tools/check-fx.mjs` eklendi
@@ -148,6 +157,5 @@ Ayrıntılar: [`rust/README.md`](rust/README.md)
 
 ## Not
 
-SheetJS (XLSX) CDN'den (jsdelivr) yüklenir; kurulum sonrası service worker bu dosyayı da önbelleğe alır,
-böylece **daha önce çevrimiçi açılmış bir kurulum çevrimdışı da açılır ve Excel dışa aktarma çalışır.**
-Hiç çevrimiçi açılmamış taze bir kurulumda çevrimdışı Excel dışa aktarma için önce bir kez internete bağlanmak gerekir.
+Uygulama ilk açılışta yaklaşık 0,8 MB (sıkıştırılmış) WebAssembly dosyası indirir; service worker bunu
+önbelleğe alır. Sonraki açılışlar ve Excel işlemleri internet olmadan da çalışır.
